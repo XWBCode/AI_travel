@@ -1,0 +1,29 @@
+# Java
+backend-java/target/
+backend-java/.mvn/
+*.class
+
+# Python
+backend-ai/__pycache__/
+backend-ai/**/__pycache__/
+backend-ai/.venv/
+*.pyc
+
+# Node
+frontend/node_modules/
+frontend/dist/
+*.local
+
+# 环境与密钥 —— 永远不要提交
+.env
+*.pem
+*.key
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db

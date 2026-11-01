@@ -1,0 +1,30 @@
+version: "3.8"
+
+# 可选：仅用于快速起 MySQL/Redis，不打包应用本身
+# 用法：docker compose up -d
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: ai-travel-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-root}
+      MYSQL_DATABASE: ai_travel
+      TZ: Asia/Shanghai
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./sql/01_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_general_ci
+
+  redis:
+    image: redis:7-alpine
+    container_name: ai-travel-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  mysql_data:
+  redis_data:
