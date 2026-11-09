@@ -24,6 +24,9 @@ frontend/dist/
 .vscode/
 *.iml
 
+# 工作区本地数据（记忆日志、临时脚本），不入库
+.workbuddy/
+
 # OS
 .DS_Store
 Thumbs.db
