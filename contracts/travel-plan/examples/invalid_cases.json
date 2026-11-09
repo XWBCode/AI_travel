@@ -1,0 +1,82 @@
+[
+  {
+    "name": "verified_false_but_value_present",
+    "why": "L0 下 verified=false 的 FactField 不得带值（05 §2.1）",
+    "mutations": [
+      { "path": ["days", 0, "items", 0, "ticketPrice", "value"], "value": 60 }
+    ],
+    "expect": "days/0/items/0/ticketPrice/value"
+  },
+  {
+    "name": "status_not_draft",
+    "why": "AI 输出只允许 DRAFT（Q-11）",
+    "mutations": [
+      { "path": ["status"], "value": "CONFIRMED" }
+    ],
+    "expect": "status"
+  },
+  {
+    "name": "inter_city_missing_from_city",
+    "why": "跨城路段必须有 fromCity/toCity（Q-04）",
+    "mutations": [
+      { "path": ["days", 1, "transportSegments", 0, "fromCity"], "value": null }
+    ],
+    "expect": "days/1/transportSegments/0/fromCity"
+  },
+  {
+    "name": "intra_day_carrying_city",
+    "why": "同日路段不得带跨城字段（Q-04 反向约束）",
+    "mutations": [
+      { "path": ["days", 0, "transportSegments", 0, "fromCity"], "value": "成都" }
+    ],
+    "expect": "days/0/transportSegments/0/fromCity"
+  },
+  {
+    "name": "free_text_contains_price",
+    "why": "自由文本不得夹带票价数值（05 §2.1 兜底规则）",
+    "mutations": [
+      { "path": ["risks", 0], "value": "门票约 60 元，建议提前购买" }
+    ],
+    "expect": "risks/0"
+  },
+  {
+    "name": "free_text_contains_duration",
+    "why": "自由文本不得夹带耗时（应对「游览 2 小时」式编造）",
+    "mutations": [
+      { "path": ["budget", "note"], "value": "整体预算按 2 小时车程估算" }
+    ],
+    "expect": "budget/note"
+  },
+  {
+    "name": "missing_field_not_in_vocabulary",
+    "why": "missingFields 为固定词表（Q-05）",
+    "mutations": [
+      { "path": ["basic", "missingFields"], "value": ["季节"] }
+    ],
+    "expect": "basic/missingFields/0"
+  },
+  {
+    "name": "plan_id_filled_by_ai",
+    "why": "planId 只能由 Java 落库后回填（Q-10）",
+    "mutations": [
+      { "path": ["planId"], "value": "123456" }
+    ],
+    "expect": "planId"
+  },
+  {
+    "name": "budget_total_as_concrete_number",
+    "why": "L0 下预算总额必须是 null（Q-02 / AC-08）",
+    "mutations": [
+      { "path": ["budget", "total", "value"], "value": 3000 }
+    ],
+    "expect": "budget/total/value"
+  },
+  {
+    "name": "destination_without_destinations",
+    "why": "有主目的地时 destinations 不得为空（Q-01）",
+    "mutations": [
+      { "path": ["basic", "destinations"], "value": [] }
+    ],
+    "expect": "basic/destinations"
+  }
+]

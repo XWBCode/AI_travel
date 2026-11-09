@@ -1,0 +1,669 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-travel.local/contracts/travel-plan/travel_plan_draft_v1.json",
+  "title": "TravelPlanDraft v1（AI 输出契约 · L0）",
+  "$comment": "唯一来源。Python 生成、Java 校验两侧读取同一份文件。修改必须升 schemaVersion 并同步 docs/design/08-TravelPlan-v1-冻结决议.md。L0 含义：未接入任何实时数据源，所有实时字段 verified=false、value=null。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "planId",
+    "title",
+    "status",
+    "basic",
+    "preferences",
+    "days",
+    "budget",
+    "risks",
+    "aiNote",
+    "unverifiedFieldCount"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0",
+      "description": "契约版本，D-06 冻结为 1.0"
+    },
+    "planId": {
+      "type": "null",
+      "description": "Q-10：AI 侧必须为 null，仅由 Java 落库后回填"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "description": "计划标题，允许含天数等用户输入信息"
+    },
+    "status": {
+      "const": "DRAFT",
+      "description": "Q-11：AI 只能产出草稿状态"
+    },
+    "basic": {
+      "$ref": "#/$defs/basic"
+    },
+    "preferences": {
+      "$ref": "#/$defs/preferences"
+    },
+    "days": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 30,
+      "items": {
+        "$ref": "#/$defs/travelDay"
+      }
+    },
+    "budget": {
+      "$ref": "#/$defs/budget"
+    },
+    "risks": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "$ref": "#/$defs/freeText"
+      }
+    },
+    "aiNote": {
+      "$ref": "#/$defs/freeText",
+      "description": "AI 生成说明，纯文本；M1 不接收 Markdown"
+    },
+    "unverifiedFieldCount": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Q-08：所有 FactField 中 verified=false 的实例数；Java 需重算比对"
+    }
+  },
+  "$defs": {
+    "freeText": {
+      "type": "string",
+      "maxLength": 500,
+      "not": {
+        "pattern": "[0-9]+\\s*(元|块钱|块|℃|°C|摄氏度|度|分钟|小时|公里|千米|米|km|KM|车次|班次|班)"
+      },
+      "description": "自由文本禁带具体价格/温度/耗时/距离/车次。天数与人数不受限（属用户输入而非实时信息）"
+    },
+    "cityName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "basic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "originCity",
+        "destination",
+        "destinations",
+        "startDate",
+        "endDate",
+        "days",
+        "travelers",
+        "missingFields"
+      ],
+      "properties": {
+        "originCity": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "出发城市，未识别为 null 并列入 missingFields"
+        },
+        "destination": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "Q-01：主目的地，用于列表页与标题"
+        },
+        "destinations": {
+          "type": "array",
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/cityName"
+          },
+          "description": "Q-01：全部目的地，首个应等于 destination（顺序由 Java 校验）"
+        },
+        "startDate": {
+          "type": ["string", "null"],
+          "format": "date"
+        },
+        "endDate": {
+          "type": ["string", "null"],
+          "format": "date"
+        },
+        "days": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "maximum": 30,
+          "description": "行程天数；未知为 null，不得用 0 或默认值冒充"
+        },
+        "travelers": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "maximum": 50
+        },
+        "missingFields": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 10,
+          "items": {
+            "$ref": "#/$defs/missingField"
+          },
+          "description": "Q-05：固定词表，禁止自由文本"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["destination"],
+            "properties": {
+              "destination": {
+                "type": "string"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "destinations": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["destination"],
+            "properties": {
+              "destination": {
+                "type": "null"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "destinations": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "missingField": {
+      "enum": [
+        "originCity",
+        "destination",
+        "startDate",
+        "endDate",
+        "days",
+        "travelers",
+        "budget",
+        "interests",
+        "transport",
+        "accommodation"
+      ],
+      "description": "Q-05 固定词表；Java 需额外校验「字段为 null 则必须列入、反之不得列入」"
+    },
+    "preferenceSource": {
+      "enum": ["USER", "USER_DEFAULT", "MODEL_KNOWLEDGE"],
+      "description": "Q-03：逐项标注来源，替代原单一 source 字段"
+    },
+    "preferences": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "interests",
+        "transport",
+        "accommodation",
+        "specialRequirements",
+        "interestsSource",
+        "transportSource",
+        "accommodationSource",
+        "specialRequirementsSource"
+      ],
+      "properties": {
+        "interests": {
+          "type": "array",
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          }
+        },
+        "transport": {
+          "type": ["string", "null"],
+          "maxLength": 64
+        },
+        "accommodation": {
+          "type": ["string", "null"],
+          "maxLength": 64
+        },
+        "specialRequirements": {
+          "type": "array",
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "interestsSource": {
+          "$ref": "#/$defs/preferenceSource"
+        },
+        "transportSource": {
+          "$ref": "#/$defs/preferenceSource"
+        },
+        "accommodationSource": {
+          "$ref": "#/$defs/preferenceSource"
+        },
+        "specialRequirementsSource": {
+          "$ref": "#/$defs/preferenceSource"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["interests"],
+            "properties": {
+              "interests": {
+                "maxItems": 0
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "interestsSource": {
+                "enum": ["USER_DEFAULT", "MODEL_KNOWLEDGE"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["specialRequirements"],
+            "properties": {
+              "specialRequirements": {
+                "maxItems": 0
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "specialRequirementsSource": {
+                "enum": ["USER_DEFAULT", "MODEL_KNOWLEDGE"]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "factFieldNumber": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/factFieldBase"
+        },
+        {
+          "properties": {
+            "value": {
+              "type": ["number", "null"]
+            }
+          }
+        }
+      ]
+    },
+    "factFieldString": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/factFieldBase"
+        },
+        {
+          "properties": {
+            "value": {
+              "type": ["string", "null"]
+            }
+          }
+        }
+      ]
+    },
+    "factFieldBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "display",
+        "source",
+        "verified",
+        "fetchedAt",
+        "expiresAt",
+        "note"
+      ],
+      "properties": {
+        "value": {
+          "type": "null",
+          "description": "L0 铁律：任何 FactField 的 value 恒为 null（verified 恒 false）。具体类型的收窄见 factFieldNumber / factFieldString，仅为与存储模型保持同构"
+        },
+        "display": {
+          "const": "待核实",
+          "description": "Q-06：L0 统一常量，前端直接渲染"
+        },
+        "source": {
+          "enum": ["NONE", "MODEL_KNOWLEDGE"]
+        },
+        "verified": {
+          "const": false
+        },
+        "fetchedAt": {
+          "type": "null"
+        },
+        "expiresAt": {
+          "type": "null"
+        },
+        "note": {
+          "$ref": "#/$defs/freeText"
+        }
+      }
+    },
+    "travelDay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dayIndex",
+        "date",
+        "city",
+        "theme",
+        "items",
+        "transportSegments",
+        "accommodation"
+      ],
+      "properties": {
+        "dayIndex": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30,
+          "description": "从 1 连续递增，连续性由 Java 校验"
+        },
+        "date": {
+          "type": ["string", "null"],
+          "format": "date"
+        },
+        "city": {
+          "$ref": "#/$defs/cityName"
+        },
+        "theme": {
+          "type": ["string", "null"],
+          "maxLength": 64
+        },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 12,
+          "items": {
+            "$ref": "#/$defs/travelItem"
+          }
+        },
+        "transportSegments": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "$ref": "#/$defs/transportSegment"
+          }
+        },
+        "accommodation": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/accommodation"
+            }
+          ]
+        }
+      }
+    },
+    "travelItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "itemOrder",
+        "attractionId",
+        "title",
+        "startTime",
+        "endTime",
+        "duration",
+        "openHours",
+        "ticketPrice",
+        "note"
+      ],
+      "properties": {
+        "itemOrder": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20,
+          "description": "日内唯一，唯一性由 Java 校验"
+        },
+        "attractionId": {
+          "type": "null",
+          "description": "Q-09：M1 无 POI 主数据，恒为 null"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "startTime": {
+          "type": ["string", "null"],
+          "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+          "description": "Q-07：建议时间，非实时数据，UI 需标注"
+        },
+        "endTime": {
+          "type": ["string", "null"],
+          "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+        },
+        "duration": {
+          "$ref": "#/$defs/factFieldNumber"
+        },
+        "openHours": {
+          "$ref": "#/$defs/factFieldString"
+        },
+        "ticketPrice": {
+          "$ref": "#/$defs/factFieldNumber"
+        },
+        "note": {
+          "$ref": "#/$defs/freeText"
+        }
+      }
+    },
+    "transportSegment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scope",
+        "fromItemOrder",
+        "toItemOrder",
+        "fromDayIndex",
+        "toDayIndex",
+        "fromCity",
+        "toCity",
+        "mode",
+        "duration",
+        "distance",
+        "advice"
+      ],
+      "properties": {
+        "scope": {
+          "enum": ["INTRA_DAY", "INTER_CITY"],
+          "description": "Q-04：区分同日景点间交通与跨城交通"
+        },
+        "fromItemOrder": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "toItemOrder": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "fromDayIndex": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "toDayIndex": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "fromCity": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "toCity": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "mode": {
+          "type": ["string", "null"],
+          "maxLength": 32
+        },
+        "duration": {
+          "$ref": "#/$defs/factFieldNumber"
+        },
+        "distance": {
+          "$ref": "#/$defs/factFieldNumber"
+        },
+        "advice": {
+          "$ref": "#/$defs/freeText"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["scope"],
+            "properties": {
+              "scope": {
+                "const": "INTRA_DAY"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "fromItemOrder": {
+                "type": "integer"
+              },
+              "toItemOrder": {
+                "type": "integer"
+              },
+              "fromDayIndex": {
+                "type": "null"
+              },
+              "toDayIndex": {
+                "type": "null"
+              },
+              "fromCity": {
+                "type": "null"
+              },
+              "toCity": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["scope"],
+            "properties": {
+              "scope": {
+                "const": "INTER_CITY"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "fromDayIndex": {
+                "type": "integer"
+              },
+              "toDayIndex": {
+                "type": "integer"
+              },
+              "fromCity": {
+                "type": "string"
+              },
+              "toCity": {
+                "type": "string"
+              },
+              "fromItemOrder": {
+                "type": "null"
+              },
+              "toItemOrder": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "accommodation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["areaName", "suggestion", "priceRange"],
+      "properties": {
+        "areaName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "suggestion": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "priceRange": {
+          "$ref": "#/$defs/factFieldString"
+        }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["currency", "total", "items", "note"],
+      "properties": {
+        "currency": {
+          "const": "CNY"
+        },
+        "total": {
+          "$ref": "#/$defs/factFieldNumber"
+        },
+        "items": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/budgetItem"
+          }
+        },
+        "note": {
+          "$ref": "#/$defs/freeText",
+          "description": "Q-02：区间只写文字说明（如「按中等消费水平估算，需自行核实」），不得写数字"
+        }
+      }
+    },
+    "budgetItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category", "label", "amount", "note"],
+      "properties": {
+        "category": {
+          "enum": ["TRANSPORT", "ACCOMMODATION", "FOOD", "TICKET", "OTHER"]
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "amount": {
+          "$ref": "#/$defs/factFieldNumber"
+        },
+        "note": {
+          "$ref": "#/$defs/freeText"
+        }
+      }
+    }
+  }
+}

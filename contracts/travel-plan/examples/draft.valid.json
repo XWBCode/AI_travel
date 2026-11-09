@@ -1,0 +1,376 @@
+{
+  "schemaVersion": "1.0",
+  "planId": null,
+  "title": "成都乐山三日游",
+  "status": "DRAFT",
+  "basic": {
+    "originCity": "西安",
+    "destination": "成都",
+    "destinations": ["成都", "乐山"],
+    "startDate": "2026-11-20",
+    "endDate": "2026-11-22",
+    "days": 3,
+    "travelers": 2,
+    "missingFields": []
+  },
+  "preferences": {
+    "interests": ["美食", "历史人文"],
+    "transport": null,
+    "accommodation": "市中心交通便利区域",
+    "specialRequirements": [],
+    "interestsSource": "USER",
+    "transportSource": "USER_DEFAULT",
+    "accommodationSource": "USER",
+    "specialRequirementsSource": "USER_DEFAULT"
+  },
+  "days": [
+    {
+      "dayIndex": 1,
+      "date": "2026-11-20",
+      "city": "成都",
+      "theme": "老城与市井",
+      "items": [
+        {
+          "itemOrder": 1,
+          "attractionId": null,
+          "title": "宽窄巷子",
+          "startTime": "09:30",
+          "endTime": "11:30",
+          "duration": {
+            "value": null,
+            "display": "待核实",
+            "source": "NONE",
+            "verified": false,
+            "fetchedAt": null,
+            "expiresAt": null,
+            "note": "未接入实时数据源"
+          },
+          "openHours": {
+            "value": null,
+            "display": "待核实",
+            "source": "NONE",
+            "verified": false,
+            "fetchedAt": null,
+            "expiresAt": null,
+            "note": "请以景区公告为准"
+          },
+          "ticketPrice": {
+            "value": null,
+            "display": "待核实",
+            "source": "NONE",
+            "verified": false,
+            "fetchedAt": null,
+            "expiresAt": null,
+            "note": "请以景区公告为准"
+          },
+          "note": "建议从北侧入口进入，避开人流高峰"
+        },
+        {
+          "itemOrder": 2,
+          "attractionId": null,
+          "title": "锦里古街",
+          "startTime": "14:00",
+          "endTime": "17:00",
+          "duration": {
+            "value": null,
+            "display": "待核实",
+            "source": "NONE",
+            "verified": false,
+            "fetchedAt": null,
+            "expiresAt": null,
+            "note": "未接入实时数据源"
+          },
+          "openHours": {
+            "value": null,
+            "display": "待核实",
+            "source": "NONE",
+            "verified": false,
+            "fetchedAt": null,
+            "expiresAt": null,
+            "note": "请以景区公告为准"
+          },
+          "ticketPrice": {
+            "value": null,
+            "display": "待核实",
+            "source": "NONE",
+            "verified": false,
+            "fetchedAt": null,
+            "expiresAt": null,
+            "note": "请以景区公告为准"
+          },
+          "note": "适合傍晚前后游览，餐饮选择较多"
+        }
+      ],
+      "transportSegments": [
+        {
+          "scope": "INTRA_DAY",
+          "fromItemOrder": 1,
+          "toItemOrder": 2,
+          "fromDayIndex": null,
+          "toDayIndex": null,
+          "fromCity": null,
+          "toCity": null,
+          "mode": "公共交通",
+          "duration": {
+            "value": null,
+            "display": "待核实",
+            "source": "NONE",
+            "verified": false,
+            "fetchedAt": null,
+            "expiresAt": null,
+            "note": "未接入地图服务"
+          },
+          "distance": {
+            "value": null,
+            "display": "待核实",
+            "source": "NONE",
+            "verified": false,
+            "fetchedAt": null,
+            "expiresAt": null,
+            "note": "未接入地图服务"
+          },
+          "advice": "两处距离较近，可用公共交通或步行前往，具体线路建议现场查询"
+        }
+      ],
+      "accommodation": {
+        "areaName": "春熙路一带",
+        "suggestion": "交通与餐饮便利，适合首次到访",
+        "priceRange": {
+          "value": null,
+          "display": "待核实",
+          "source": "NONE",
+          "verified": false,
+          "fetchedAt": null,
+          "expiresAt": null,
+          "note": "未接入房价数据"
+        }
+      }
+    },
+    {
+      "dayIndex": 2,
+      "date": "2026-11-21",
+      "city": "乐山",
+      "theme": "大佛与江景",
+      "items": [
+        {
+          "itemOrder": 1,
+          "attractionId": null,
+          "title": "乐山大佛",
+          "startTime": "09:00",
+          "endTime": "12:30",
+          "duration": {
+            "value": null,
+            "display": "待核实",
+            "source": "NONE",
+            "verified": false,
+            "fetchedAt": null,
+            "expiresAt": null,
+            "note": "未接入实时数据源"
+          },
+          "openHours": {
+            "value": null,
+            "display": "待核实",
+            "source": "NONE",
+            "verified": false,
+            "fetchedAt": null,
+            "expiresAt": null,
+            "note": "请以景区公告为准"
+          },
+          "ticketPrice": {
+            "value": null,
+            "display": "待核实",
+            "source": "NONE",
+            "verified": false,
+            "fetchedAt": null,
+            "expiresAt": null,
+            "note": "请以景区公告为准"
+          },
+          "note": "旺季排队时间可能较长，建议早到"
+        }
+      ],
+      "transportSegments": [
+        {
+          "scope": "INTER_CITY",
+          "fromItemOrder": null,
+          "toItemOrder": null,
+          "fromDayIndex": 1,
+          "toDayIndex": 2,
+          "fromCity": "成都",
+          "toCity": "乐山",
+          "mode": "城际铁路",
+          "duration": {
+            "value": null,
+            "display": "待核实",
+            "source": "NONE",
+            "verified": false,
+            "fetchedAt": null,
+            "expiresAt": null,
+            "note": "未接入班次数据"
+          },
+          "distance": {
+            "value": null,
+            "display": "待核实",
+            "source": "NONE",
+            "verified": false,
+            "fetchedAt": null,
+            "expiresAt": null,
+            "note": "未接入地图服务"
+          },
+          "advice": "建议提前查询班次并购票，预留换乘时间"
+        }
+      ],
+      "accommodation": {
+        "areaName": "乐山港附近",
+        "suggestion": "靠近景区入口，便于次日行程",
+        "priceRange": {
+          "value": null,
+          "display": "待核实",
+          "source": "NONE",
+          "verified": false,
+          "fetchedAt": null,
+          "expiresAt": null,
+          "note": "未接入房价数据"
+        }
+      }
+    },
+    {
+      "dayIndex": 3,
+      "date": "2026-11-22",
+      "city": "都江堰",
+      "theme": "水利工程与古镇",
+      "items": [
+        {
+          "itemOrder": 1,
+          "attractionId": null,
+          "title": "都江堰景区",
+          "startTime": "10:00",
+          "endTime": "15:00",
+          "duration": {
+            "value": null,
+            "display": "待核实",
+            "source": "NONE",
+            "verified": false,
+            "fetchedAt": null,
+            "expiresAt": null,
+            "note": "未接入实时数据源"
+          },
+          "openHours": {
+            "value": null,
+            "display": "待核实",
+            "source": "NONE",
+            "verified": false,
+            "fetchedAt": null,
+            "expiresAt": null,
+            "note": "请以景区公告为准"
+          },
+          "ticketPrice": {
+            "value": null,
+            "display": "待核实",
+            "source": "NONE",
+            "verified": false,
+            "fetchedAt": null,
+            "expiresAt": null,
+            "note": "请以景区公告为准"
+          },
+          "note": "景区范围较大，建议穿舒适鞋"
+        }
+      ],
+      "transportSegments": [
+        {
+          "scope": "INTER_CITY",
+          "fromItemOrder": null,
+          "toItemOrder": null,
+          "fromDayIndex": 2,
+          "toDayIndex": 3,
+          "fromCity": "乐山",
+          "toCity": "都江堰",
+          "mode": "城际铁路",
+          "duration": {
+            "value": null,
+            "display": "待核实",
+            "source": "NONE",
+            "verified": false,
+            "fetchedAt": null,
+            "expiresAt": null,
+            "note": "未接入班次数据"
+          },
+          "distance": {
+            "value": null,
+            "display": "待核实",
+            "source": "NONE",
+            "verified": false,
+            "fetchedAt": null,
+            "expiresAt": null,
+            "note": "未接入地图服务"
+          },
+          "advice": "路线较长，建议优先选择城际铁路并在出发前确认末班时间"
+        }
+      ],
+      "accommodation": null
+    }
+  ],
+  "budget": {
+    "currency": "CNY",
+    "total": {
+      "value": null,
+      "display": "待核实",
+      "source": "NONE",
+      "verified": false,
+      "fetchedAt": null,
+      "expiresAt": null,
+      "note": "未接入实时价格"
+    },
+    "items": [
+      {
+        "category": "TRANSPORT",
+        "label": "往返与城际交通",
+        "amount": {
+          "value": null,
+          "display": "待核实",
+          "source": "NONE",
+          "verified": false,
+          "fetchedAt": null,
+          "expiresAt": null,
+          "note": "未接入实时价格"
+        },
+        "note": "按中等消费水平估算，需自行核实"
+      },
+      {
+        "category": "ACCOMMODATION",
+        "label": "住宿",
+        "amount": {
+          "value": null,
+          "display": "待核实",
+          "source": "NONE",
+          "verified": false,
+          "fetchedAt": null,
+          "expiresAt": null,
+          "note": "未接入实时价格"
+        },
+        "note": "按中等消费水平估算，需自行核实"
+      },
+      {
+        "category": "FOOD",
+        "label": "餐饮",
+        "amount": {
+          "value": null,
+          "display": "待核实",
+          "source": "NONE",
+          "verified": false,
+          "fetchedAt": null,
+          "expiresAt": null,
+          "note": "未接入实时价格"
+        },
+        "note": "按中等消费水平估算，需自行核实"
+      }
+    ],
+    "note": "当前未接入实时价格数据，仅提供估算口径，请以实际报价为准"
+  },
+  "risks": [
+    "山区天气变化较快，建议携带雨具",
+    "景区开放时间可能临时调整，出行前请查询官方公告",
+    "跨城行程建议预留充足换乘时间"
+  ],
+  "aiNote": "本计划按您的三天行程与美食偏好安排，跨城段落已单独标注。所有票价、开放时间与耗时均为待核实状态，出行前请通过官方渠道确认。",
+  "unverifiedFieldCount": 24
+}

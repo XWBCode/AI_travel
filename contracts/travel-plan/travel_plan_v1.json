@@ -1,0 +1,697 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-travel.local/contracts/travel-plan/travel_plan_v1.json",
+  "title": "TravelPlan v1（存储 / 展示模型）",
+  "$comment": "相对 travel_plan_draft_v1.json 仅放宽 5 处：planId 非空、status 五态、attractionId 可非空、FactField 允许 verified=true 且 value 有值、display 可为任意短文本。其余结构与 draft 完全一致。前端 frontend/src/types/travelPlan.ts 与此一一对应。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "planId",
+    "title",
+    "status",
+    "version",
+    "basic",
+    "preferences",
+    "days",
+    "budget",
+    "risks",
+    "aiNote",
+    "unverifiedFieldCount"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0"
+    },
+    "planId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "status": {
+      "enum": ["DRAFT", "CONFIRMED", "IN_PROGRESS", "COMPLETED", "CANCELLED"]
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "乐观锁版本号，PATCH 必须携带"
+    },
+    "basic": {
+      "$ref": "#/$defs/basic"
+    },
+    "preferences": {
+      "$ref": "#/$defs/preferences"
+    },
+    "days": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 30,
+      "items": {
+        "$ref": "#/$defs/travelDay"
+      }
+    },
+    "budget": {
+      "$ref": "#/$defs/budget"
+    },
+    "risks": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "$ref": "#/$defs/freeText"
+      }
+    },
+    "aiNote": {
+      "$ref": "#/$defs/freeText"
+    },
+    "unverifiedFieldCount": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "$defs": {
+    "freeText": {
+      "type": "string",
+      "maxLength": 500,
+      "not": {
+        "pattern": "[0-9]+\\s*(元|块钱|块|℃|°C|摄氏度|度|分钟|小时|公里|千米|米|km|KM|车次|班次|班)"
+      }
+    },
+    "cityName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "basic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "originCity",
+        "destination",
+        "destinations",
+        "startDate",
+        "endDate",
+        "days",
+        "travelers",
+        "missingFields"
+      ],
+      "properties": {
+        "originCity": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "destination": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "destinations": {
+          "type": "array",
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/cityName"
+          }
+        },
+        "startDate": {
+          "type": ["string", "null"],
+          "format": "date"
+        },
+        "endDate": {
+          "type": ["string", "null"],
+          "format": "date"
+        },
+        "days": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "maximum": 30
+        },
+        "travelers": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "maximum": 50
+        },
+        "missingFields": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 10,
+          "items": {
+            "$ref": "#/$defs/missingField"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["destination"],
+            "properties": {
+              "destination": {
+                "type": "string"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "destinations": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["destination"],
+            "properties": {
+              "destination": {
+                "type": "null"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "destinations": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "missingField": {
+      "enum": [
+        "originCity",
+        "destination",
+        "startDate",
+        "endDate",
+        "days",
+        "travelers",
+        "budget",
+        "interests",
+        "transport",
+        "accommodation"
+      ]
+    },
+    "preferenceSource": {
+      "enum": ["USER", "USER_DEFAULT", "MODEL_KNOWLEDGE"]
+    },
+    "preferences": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "interests",
+        "transport",
+        "accommodation",
+        "specialRequirements",
+        "interestsSource",
+        "transportSource",
+        "accommodationSource",
+        "specialRequirementsSource"
+      ],
+      "properties": {
+        "interests": {
+          "type": "array",
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          }
+        },
+        "transport": {
+          "type": ["string", "null"],
+          "maxLength": 64
+        },
+        "accommodation": {
+          "type": ["string", "null"],
+          "maxLength": 64
+        },
+        "specialRequirements": {
+          "type": "array",
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "interestsSource": {
+          "$ref": "#/$defs/preferenceSource"
+        },
+        "transportSource": {
+          "$ref": "#/$defs/preferenceSource"
+        },
+        "accommodationSource": {
+          "$ref": "#/$defs/preferenceSource"
+        },
+        "specialRequirementsSource": {
+          "$ref": "#/$defs/preferenceSource"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["interests"],
+            "properties": {
+              "interests": {
+                "maxItems": 0
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "interestsSource": {
+                "enum": ["USER_DEFAULT", "MODEL_KNOWLEDGE"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["specialRequirements"],
+            "properties": {
+              "specialRequirements": {
+                "maxItems": 0
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "specialRequirementsSource": {
+                "enum": ["USER_DEFAULT", "MODEL_KNOWLEDGE"]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "factFieldNumber": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/factFieldBase"
+        },
+        {
+          "properties": {
+            "value": {
+              "type": ["number", "null"]
+            }
+          }
+        }
+      ]
+    },
+    "factFieldString": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/factFieldBase"
+        },
+        {
+          "properties": {
+            "value": {
+              "type": ["string", "null"]
+            }
+          }
+        }
+      ]
+    },
+    "factFieldBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "display",
+        "source",
+        "verified",
+        "fetchedAt",
+        "expiresAt",
+        "note"
+      ],
+      "properties": {
+        "value": {
+          "description": "具体类型由 factFieldNumber / factFieldString 收窄"
+        },
+        "display": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "source": {
+          "enum": ["NONE", "MODEL_KNOWLEDGE", "USER", "TOOL", "CACHE"]
+        },
+        "verified": {
+          "type": "boolean"
+        },
+        "fetchedAt": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "expiresAt": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "note": {
+          "$ref": "#/$defs/freeText"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["verified"],
+            "properties": {
+              "verified": {
+                "const": false
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["verified"],
+            "properties": {
+              "verified": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "required": ["fetchedAt"],
+            "properties": {
+              "fetchedAt": {
+                "type": "string"
+              },
+              "source": {
+                "enum": ["USER", "TOOL", "CACHE"]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "travelDay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dayIndex",
+        "date",
+        "city",
+        "theme",
+        "items",
+        "transportSegments",
+        "accommodation"
+      ],
+      "properties": {
+        "dayIndex": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30
+        },
+        "date": {
+          "type": ["string", "null"],
+          "format": "date"
+        },
+        "city": {
+          "$ref": "#/$defs/cityName"
+        },
+        "theme": {
+          "type": ["string", "null"],
+          "maxLength": 64
+        },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 12,
+          "items": {
+            "$ref": "#/$defs/travelItem"
+          }
+        },
+        "transportSegments": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "$ref": "#/$defs/transportSegment"
+          }
+        },
+        "accommodation": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/accommodation"
+            }
+          ]
+        }
+      }
+    },
+    "travelItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "itemOrder",
+        "attractionId",
+        "title",
+        "startTime",
+        "endTime",
+        "duration",
+        "openHours",
+        "ticketPrice",
+        "note"
+      ],
+      "properties": {
+        "itemOrder": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        },
+        "attractionId": {
+          "type": ["string", "null"]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "startTime": {
+          "type": ["string", "null"],
+          "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+        },
+        "endTime": {
+          "type": ["string", "null"],
+          "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+        },
+        "duration": {
+          "$ref": "#/$defs/factFieldNumber"
+        },
+        "openHours": {
+          "$ref": "#/$defs/factFieldString"
+        },
+        "ticketPrice": {
+          "$ref": "#/$defs/factFieldNumber"
+        },
+        "note": {
+          "$ref": "#/$defs/freeText"
+        }
+      }
+    },
+    "transportSegment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scope",
+        "fromItemOrder",
+        "toItemOrder",
+        "fromDayIndex",
+        "toDayIndex",
+        "fromCity",
+        "toCity",
+        "mode",
+        "duration",
+        "distance",
+        "advice"
+      ],
+      "properties": {
+        "scope": {
+          "enum": ["INTRA_DAY", "INTER_CITY"]
+        },
+        "fromItemOrder": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "toItemOrder": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "fromDayIndex": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "toDayIndex": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "fromCity": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "toCity": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "mode": {
+          "type": ["string", "null"],
+          "maxLength": 32
+        },
+        "duration": {
+          "$ref": "#/$defs/factFieldNumber"
+        },
+        "distance": {
+          "$ref": "#/$defs/factFieldNumber"
+        },
+        "advice": {
+          "$ref": "#/$defs/freeText"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["scope"],
+            "properties": {
+              "scope": {
+                "const": "INTRA_DAY"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "fromItemOrder": {
+                "type": "integer"
+              },
+              "toItemOrder": {
+                "type": "integer"
+              },
+              "fromDayIndex": {
+                "type": "null"
+              },
+              "toDayIndex": {
+                "type": "null"
+              },
+              "fromCity": {
+                "type": "null"
+              },
+              "toCity": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["scope"],
+            "properties": {
+              "scope": {
+                "const": "INTER_CITY"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "fromDayIndex": {
+                "type": "integer"
+              },
+              "toDayIndex": {
+                "type": "integer"
+              },
+              "fromCity": {
+                "type": "string"
+              },
+              "toCity": {
+                "type": "string"
+              },
+              "fromItemOrder": {
+                "type": "null"
+              },
+              "toItemOrder": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "accommodation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["areaName", "suggestion", "priceRange"],
+      "properties": {
+        "areaName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "suggestion": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "priceRange": {
+          "$ref": "#/$defs/factFieldString"
+        }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["currency", "total", "items", "note"],
+      "properties": {
+        "currency": {
+          "const": "CNY"
+        },
+        "total": {
+          "$ref": "#/$defs/factFieldNumber"
+        },
+        "items": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/budgetItem"
+          }
+        },
+        "note": {
+          "$ref": "#/$defs/freeText"
+        }
+      }
+    },
+    "budgetItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category", "label", "amount", "note"],
+      "properties": {
+        "category": {
+          "enum": ["TRANSPORT", "ACCOMMODATION", "FOOD", "TICKET", "OTHER"]
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "amount": {
+          "$ref": "#/$defs/factFieldNumber"
+        },
+        "note": {
+          "$ref": "#/$defs/freeText"
+        }
+      }
+    }
+  }
+}
