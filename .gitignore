@@ -27,3 +27,17 @@ frontend/dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# Java 通用忽略（合并自 GitHub 仓库初始化模板 Initial commit）
+*.log
+*.ctxt
+.mtj.tmp/
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+hs_err_pid*
+replay_pid*
