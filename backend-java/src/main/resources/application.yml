@@ -19,6 +19,18 @@ spring:
       maximum-pool-size: 10
       minimum-idle: 2
       connection-timeout: 10000
+  # 迁移脚本唯一来源：仓库根 sql/migration（pom 中复制到 classpath:db/migration）
+  # 启动时自动执行，结果写入 flyway_schema_history；禁止跳过版本手工改表
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    encoding: UTF-8
+    validate-on-migrate: true
+    clean-disabled: true
+    # Phase 1 的库是手工建表的，没有历史表。以 version 0 建立基线，
+    # 之后 V1（CREATE TABLE IF NOT EXISTS）在已有库上空操作、在空库上建基础表，V2 建计划表。
+    baseline-on-migrate: true
+    baseline-version: 0
 
 server:
   port: ${SERVER_PORT:8080}

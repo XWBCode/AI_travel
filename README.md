@@ -81,6 +81,8 @@ SQL
 mysql -uroot -p < sql/01_schema.sql
 ```
 
+> 建表也可以完全交给应用：启动 Java 服务时 Flyway 会自动执行 `sql/migration/` 下的迁移脚本（V1 建基础表、V2 建计划表）。上面的手工脚本只是给「想先建好库再启动」的场景用，已执行过也不会冲突（V1 是幂等的）。
+
 > 用 `docker compose up -d` 起 MySQL 时，库、账号与建表脚本都会按 `.env` 自动创建，可跳过本节。
 
 ### 3. 启动三个服务

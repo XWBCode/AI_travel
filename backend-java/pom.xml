@@ -48,6 +48,16 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- 数据库迁移：脚本唯一来源是仓库根的 sql/migration，构建时复制到 classpath:db/migration -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-mysql</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-api</artifactId>
@@ -85,6 +95,20 @@
     </dependencies>
 
     <build>
+        <resources>
+            <!-- 默认资源目录必须显式保留，否则自定义 resources 会覆盖掉 application*.yml -->
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <!-- 迁移脚本唯一来源：仓库根 sql/migration，打包进 classpath:db/migration 供 Flyway 执行 -->
+            <resource>
+                <directory>${project.basedir}/../sql/migration</directory>
+                <targetPath>db/migration</targetPath>
+                <includes>
+                    <include>V*.sql</include>
+                </includes>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
