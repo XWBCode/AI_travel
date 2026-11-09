@@ -1,27 +1,24 @@
+# ============================================================
+# 公共配置：只放与环境无关的项与结构定义
+# 环境特定值（数据库连接、密钥、外部服务地址）见
+#   application-dev.yml  /  application-prod.yml
+# 规范：docs/design/06-工程环境与发布规范.md 第 1 节
+# ============================================================
 spring:
   application:
     name: ai-travel-backend
   profiles:
-    active: local
+    # 默认 dev；生产必须显式指定 SPRING_PROFILES_ACTIVE=prod
+    active: ${SPRING_PROFILES_ACTIVE:dev}
   jackson:
     default-property-inclusion: non_null
     time-zone: Asia/Shanghai
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DB:ai_travel}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false&createDatabaseIfNotExist=true
-    username: ${MYSQL_USER:root}
-    password: ${MYSQL_PASSWORD:root}
     hikari:
       maximum-pool-size: 10
       minimum-idle: 2
       connection-timeout: 10000
-  data:
-    redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
-      database: 0
-      timeout: 3000ms
 
 server:
   port: ${SERVER_PORT:8080}
@@ -41,17 +38,11 @@ mybatis-plus:
 
 app:
   jwt:
-    # 生产环境必须通过环境变量覆盖，禁止使用默认值上线
-    secret: ${JWT_SECRET:ai-travel-dev-secret-please-change-me-in-production-0123456789}
     access-token-minutes: 120
-  cors:
-    allowed-origins: ${CORS_ORIGINS:http://localhost:5173}
   ai:
-    base-url: ${AI_SERVICE_URL:http://localhost:8000}
     connect-timeout-ms: 5000
     read-timeout-ms: 180000
 
 logging:
   level:
     root: info
-    com.aitravel: debug

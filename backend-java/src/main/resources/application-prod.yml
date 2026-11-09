@@ -1,0 +1,31 @@
+# ============================================================
+# prod：正式运行
+# 原则：所有敏感项与环境地址一律从环境变量注入，不提供任何默认值，
+#       缺失即启动失败（fail fast），避免误用开发配置上线。
+# 数据库：独立实例与独立 schema，不得与 dev/test 共用（06 文档 §1 U 条）
+# 模型：仅真实数据源，禁止 mock
+# ============================================================
+spring:
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST}:${MYSQL_PORT:3306}/${MYSQL_DB}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=true&requireSSL=true
+    username: ${MYSQL_USER}
+    password: ${MYSQL_PASSWORD}
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD}
+      database: 0
+      timeout: 3000ms
+
+app:
+  jwt:
+    secret: ${JWT_SECRET}
+  cors:
+    allowed-origins: ${CORS_ORIGINS}
+  ai:
+    base-url: ${AI_SERVICE_URL}
+
+logging:
+  level:
+    com.aitravel: info

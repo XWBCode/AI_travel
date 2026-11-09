@@ -7,8 +7,12 @@ services:
     image: mysql:8.0
     container_name: ai-travel-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-root}
-      MYSQL_DATABASE: ai_travel
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      # dev 专库 + 专用账号，与 06 文档环境隔离要求一致
+      MYSQL_DATABASE: ${MYSQL_DB:-ai_travel_dev}
+      MYSQL_USER: ${MYSQL_USER:-ai_travel}
+      # 口令由 .env 注入；占位默认值仅用于本机起容器，禁止用于任何共享环境
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-ai_travel_dev_change_me}
       TZ: Asia/Shanghai
     ports:
       - "3306:3306"

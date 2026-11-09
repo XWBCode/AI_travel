@@ -1,0 +1,37 @@
+# ============================================================
+# dev：本机开发、日常联调
+# 数据库：本机 MySQL 的 ai_travel_dev（专库专用，不与 test/prod 共用）
+# 模型：允许 mock，但必须显式标注（Python 侧负责标记）
+#
+# 启动前需提供环境变量（.env / start-all.bat / IDE Run Configuration）：
+#   MYSQL_USER / MYSQL_PASSWORD  —— dev 专用账号，需先在 MySQL 中创建
+# 或使用 docker-compose 起 MySQL，账号由 compose 自动创建
+# ============================================================
+spring:
+  datasource:
+    # 应用账号只授本库权限，故不带 createDatabaseIfNotExist：
+    # 库与账号须先由 sql/01_schema.sql 或 DBA 创建，应用不自动建库
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DB:ai_travel_dev}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    username: ${MYSQL_USER:ai_travel}
+    # 不设默认口令：缺失时连接立即失败，避免把开发口令写进仓库
+    password: ${MYSQL_PASSWORD:}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: 0
+      timeout: 3000ms
+
+app:
+  jwt:
+    # dev 专用默认值，仅供本机使用；prod 无默认值，缺失即启动失败
+    secret: ${JWT_SECRET:ai-travel-dev-secret-please-change-me-in-production-0123456789}
+  cors:
+    allowed-origins: ${CORS_ORIGINS:http://localhost:5173}
+  ai:
+    base-url: ${AI_SERVICE_URL:http://localhost:8000}
+
+logging:
+  level:
+    com.aitravel: debug

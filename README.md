@@ -62,16 +62,26 @@ ai-travel/
 ```bash
 cp .env.example .env
 # 编辑 .env：
-#  - 填 MySQL 密码
+#  - 填 MySQL 专用账号口令（见下一步）
 #  - LLM_PROVIDER=openai_compatible（首次可保持 mock）
 #  - LLM_API_KEY=你的 key（DeepSeek/通义/智谱等任一 OpenAI 兼容服务）
 ```
 
 ### 2. 初始化数据库
 
+按 06 文档的环境隔离要求，dev 使用**独立库 `ai_travel_dev` + 专用账号**；应用账号只授予本库权限、不具备建库能力，所以库和账号要先建好（口令需与 `.env` 的 `MYSQL_PASSWORD` 一致）：
+
 ```bash
+mysql -uroot -p <<'SQL'
+CREATE DATABASE IF NOT EXISTS ai_travel_dev DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+CREATE USER IF NOT EXISTS 'ai_travel'@'localhost' IDENTIFIED BY '<替换为你的口令>';
+GRANT ALL PRIVILEGES ON ai_travel_dev.* TO 'ai_travel'@'localhost';
+SQL
+
 mysql -uroot -p < sql/01_schema.sql
 ```
+
+> 用 `docker compose up -d` 起 MySQL 时，库、账号与建表脚本都会按 `.env` 自动创建，可跳过本节。
 
 ### 3. 启动三个服务
 

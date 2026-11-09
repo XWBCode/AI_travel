@@ -1,15 +1,21 @@
 -- ============================================================
--- AI 旅行助手 Phase 1 建表脚本
+-- AI 旅行助手 Phase 1 建表脚本（dev 环境基线）
 -- 数据库：MySQL 8.0+
 -- 字符集：utf8mb4（必须，涉及 emoji 与多语言地名）
 -- 约定：主键 BIGINT 雪花 ID（由 MyBatis-Plus 生成），deleted 逻辑删除
+--
+-- 环境约定（见 docs/design/06 第 1 节）：
+--   本脚本默认操作 dev 库 ai_travel_dev。test / prod 不得复用该库，
+--   需在各自环境将库名替换为对应 schema 后执行（或交由 DBA 指定）。
+--   应用账号只需本库权限，不授予 CREATE DATABASE，故连接串不带
+--   createDatabaseIfNotExist。
 -- ============================================================
 
-CREATE DATABASE IF NOT EXISTS `ai_travel`
+CREATE DATABASE IF NOT EXISTS `ai_travel_dev`
     DEFAULT CHARACTER SET utf8mb4
     COLLATE utf8mb4_general_ci;
 
-USE `ai_travel`;
+USE `ai_travel_dev`;
 
 -- ----------------------------
 -- 用户表
