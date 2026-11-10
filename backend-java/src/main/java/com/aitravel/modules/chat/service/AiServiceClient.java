@@ -115,6 +115,54 @@ public class AiServiceClient {
         }
     }
 
+    /**
+     * 非流式生成旅行计划（M1 WP4）。
+     * <p>
+     * 与 {@link #streamChat} 的关键差异：这里一次性拿完整 JSON，因为落库前必须整体校验，
+     * 增量片段无法校验。返回体是 Python 的 {@code POST /v1/plan/generate} 原文，
+     * 解析与业务判断都交给调用方（PlanService），本方法只负责传输。
+     */
+    public JsonNode generatePlan(List<Map<String, String>> turns, String traceId) {
+        String json;
+        try {
+            json = objectMapper.writeValueAsString(Map.of("messages", turns));
+        } catch (Exception e) {
+            throw new com.aitravel.common.exception.BizException(
+                    com.aitravel.common.api.ErrorCode.BAD_REQUEST, "计划请求序列化失败");
+        }
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/plan/generate"))
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json")
+                .header("X-Trace-Id", traceId == null ? "" : traceId)
+                // 单次生成上限 120s（05 §6），与 SSE 的 180s 兜底区分开
+                .timeout(Duration.ofSeconds(120))
+                .POST(HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8))
+                .build();
+
+        try {
+            HttpResponse<String> response = httpClient.send(request,
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (response.statusCode() != 200) {
+                throw new com.aitravel.common.exception.BizException(
+                        com.aitravel.common.api.ErrorCode.AI_SERVICE_UNAVAILABLE,
+                        "AI 服务返回状态码 " + response.statusCode());
+            }
+            return objectMapper.readTree(response.body());
+        } catch (IOException e) {
+            log.error("调用 AI 计划生成失败", e);
+            String detail = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            throw new com.aitravel.common.exception.BizException(
+                    com.aitravel.common.api.ErrorCode.AI_SERVICE_UNAVAILABLE,
+                    "AI 服务连接失败：" + detail + "（请确认 " + baseUrl + " 已启动）");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new com.aitravel.common.exception.BizException(
+                    com.aitravel.common.api.ErrorCode.AI_SERVICE_UNAVAILABLE, "计划生成被中断");
+        }
+    }
+
     /** 读取对端错误响应体（限量），失败时返回空串，不影响主流程。 */
     private static String readBodySafely(InputStream in) {
         try (InputStream body = in) {

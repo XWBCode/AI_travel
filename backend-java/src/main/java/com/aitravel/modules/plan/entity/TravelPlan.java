@@ -38,6 +38,9 @@ public class TravelPlan extends BaseEntity {
     /** Q-01：JSON 数组文本，[0] 必须等于 destination */
     private String destinations;
 
+    /** V3：JSON 数组文本，缺失字段名；与 basic 的 null 状态严格对应（S-4） */
+    private String missingFields;
+
     private LocalDate startDate;
 
     private LocalDate endDate;

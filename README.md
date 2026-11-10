@@ -116,6 +116,33 @@ docker compose up -d
 # 建表脚本会自动执行
 ```
 
+### 5. 运行测试
+
+```bash
+cd backend-java
+
+# 单元测试（无需数据库，随时可跑）
+mvn test
+
+# 含数据库集成测试（AC-07 / AC-09 的落库级证据）
+# 需要先建独立测试库，并用环境变量传入口令——口令不进仓库
+mysql -uroot -p -e "CREATE DATABASE IF NOT EXISTS ai_travel_test DEFAULT CHARACTER SET utf8mb4;
+  GRANT ALL PRIVILEGES ON ai_travel_test.* TO 'ai_travel'@'localhost';"
+MYSQL_PASSWORD=你的口令 mvn test
+```
+
+测试库固定为 `ai_travel_test`，**测试绝不会连到 `ai_travel_dev`**。
+未设置 `MYSQL_PASSWORD` 时，`PlanPersistenceTest` 会自动跳过（不是失败）。
+
+Python 侧：
+
+```bash
+cd backend-ai
+./.venv/Scripts/python.exe -m pytest tests -q          # 单元 + 接口测试
+./../backend-ai/.venv/Scripts/python.exe ../contracts/travel-plan/tools/validate_examples.py   # 契约自检
+```
+
+
 ## LLM 配置说明
 
 `backend-ai` 支持两种模式，通过 `.env` 的 `LLM_PROVIDER` 切换：

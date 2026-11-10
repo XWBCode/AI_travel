@@ -6,7 +6,11 @@
   "basic": {
     "originCity": "西安",
     "destination": "成都",
-    "destinations": ["成都", "乐山"],
+    "destinations": [
+      "成都",
+      "乐山",
+      "都江堰"
+    ],
     "startDate": "2026-11-20",
     "endDate": "2026-11-22",
     "days": 3,
@@ -14,7 +18,10 @@
     "missingFields": []
   },
   "preferences": {
-    "interests": ["美食", "历史人文"],
+    "interests": [
+      "美食",
+      "历史人文"
+    ],
     "transport": null,
     "accommodation": "市中心交通便利区域",
     "specialRequirements": [],

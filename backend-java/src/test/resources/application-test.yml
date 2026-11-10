@@ -1,18 +1,37 @@
+# ============================================================
+# test：仅用于 JUnit 集成测试（@ActiveProfiles("test")）
+#
+# 为什么不用 H2：本项目的建表脚本用了 MySQL 专有特性（JSON 列、ON UPDATE
+# CURRENT_TIMESTAMP、ENGINE=InnoDB、utf8mb4）。H2 的 MySQL 兼容模式对这些只是
+# 「大致容忍」，跑得过也不代表生产能跑；而且 JSON 列的读写差异会掩盖真实问题。
+# 因此测试直接连一个独立的 MySQL 库。
+#
+# 建库（一次性）：
+#   CREATE DATABASE ai_travel_test DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+#   GRANT ALL PRIVILEGES ON ai_travel_test.* TO 'ai_travel'@'localhost';
+#
+# 与 dev 的隔离：库名写死 ai_travel_test，测试永远不会连到 ai_travel_dev。
+# 口令不进仓库：由环境变量 MYSQL_PASSWORD 传入；未设置时相关集成测试自动跳过。
+# ============================================================
 spring:
   datasource:
-    url: jdbc:h2:mem:aitravel;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
-    driver-class-name: org.h2.Driver
-    username: sa
-    password: ""
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/ai_travel_test?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    username: ${MYSQL_USER:ai_travel}
+    password: ${MYSQL_PASSWORD:}
   data:
     redis:
-      host: localhost
-      port: 6379
-  sql:
-    init:
-      mode: always
-      schema-locations: classpath:schema-h2.sql
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      database: 15
 
 app:
   jwt:
-    secret: test-secret-key-for-unit-test-only-0123456789abcdef
+    secret: ai-travel-test-secret-0123456789-0123456789-0123456789
+  cors:
+    allowed-origins: http://localhost:5173
+  ai:
+    base-url: http://localhost:8000
+
+logging:
+  level:
+    com.aitravel: info

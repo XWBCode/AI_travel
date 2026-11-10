@@ -73,6 +73,54 @@ async def plan_intent(req: PlanRequest, request: Request):
     }
 
 
+@router.post("/plan/generate")
+async def plan_generate(req: PlanRequest, request: Request):
+    """非流式生成：返回完整 JSON，供 Java 落库使用。
+
+    与 `/plan/stream` 共用同一条 run_generation 流水线（同样的校验、同样的 mock 分支），
+    只是把事件收集成一个响应体。分成两个端点而不是让 Java 去解析自己的 SSE：
+    跨语言解析 SSE 很容易在心跳、分包、事件名上踩坑（M0 就踩过），没必要重复一次。
+    """
+    provider = request.app.state.provider
+    trace_id = request.headers.get("X-Trace-Id", "")
+    history = _history(req)
+
+    intent_payload: dict | None = None
+    draft: dict | None = None
+    rejected: dict | None = None
+    error: dict | None = None
+    done: dict = {}
+
+    async for event, data in run_generation(provider, analyze_messages(history), history, trace_id):
+        if event == "intent":
+            intent_payload = data
+        elif event == "plan_draft":
+            draft = data
+        elif event == "plan_rejected":
+            rejected = data
+        elif event == "error":
+            error = data
+        elif event == "done":
+            done = data
+
+    data = {
+        "intent": intent_payload,
+        "draft": draft,
+        "rejected": rejected,
+        "skipped": done.get("skipped"),
+        "missingFields": done.get("missingFields"),
+        "done": done,
+    }
+    if error is not None:
+        return {
+            "code": error.get("code", 50000),
+            "message": error.get("message", "计划生成失败"),
+            "data": data,
+            "traceId": trace_id,
+        }
+    return {"code": 0, "message": "ok", "data": data, "traceId": trace_id}
+
+
 @router.post("/plan/stream")
 async def plan_stream(req: PlanRequest, request: Request):
     provider = request.app.state.provider

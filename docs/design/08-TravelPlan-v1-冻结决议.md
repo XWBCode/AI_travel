@@ -61,9 +61,28 @@ JSON Schema 只能管单点结构，以下六条写进 WP4 的 `PlanSchemaValida
 | S-1 | `dayIndex` 从 1 连续递增，`days.length === basic.days`（`days` 非空时） | 拒绝，`SCHEMA_VIOLATION` |
 | S-2 | 同一 `day` 内 `itemOrder` 唯一且从 1 连续 | 拒绝 |
 | S-3 | `destinations[0] === destination`，且 `days[].city ⊆ destinations` | 拒绝 |
-| S-4 | `missingFields` 与 `basic` 的 null 状态严格对应（该列的不列、不该列的列了都拒） | 拒绝 |
+| S-4 | `missingFields` 与 `basic` 的 null 状态严格对应（该列的不列、不该列的列了都拒）。**范围限定 basic 的 6 个字段**：`originCity / destination / startDate / endDate / days / travelers` | 拒绝 |
 | S-5 | `unverifiedFieldCount` 重算比对 | 拒绝（防自报不实） |
 | S-6 | `transportSegment` 的 `fromDayIndex/toDayIndex` 必须指向存在的天，且 `fromDayIndex < toDayIndex` | 拒绝 |
+
+### 4.1 WP4 实现时对规则的收敛（2026-11-10）
+
+S-4 原表述里的「`basic` 的 null 状态」按字面实现会把 `preferences.transport / accommodation` 也纳入比对，
+但 Q-03 引入的 `*Source = USER_DEFAULT` 已经表达了「用户没提、按默认值处理」，这与「未知」是两件事。
+按字面实现会误拒合法计划——**合规样例就是这样被抓出来的**（样例里 `transport` 为 null 且未列入 `missingFields`）。
+
+因此 S-4 明确收敛为 basic 的 6 个字段，排除项与理由：
+
+| 排除字段 | 理由 |
+|---|---|
+| `preferences.transport / accommodation` | `*Source = USER_DEFAULT` 已表达「未指定但按默认」 |
+| `budget` | 契约中恒为对象，未知体现在 `total` 的 FactField 状态 |
+| `interests` | 空数组可能是用户明确表示「没有偏好」，不等于未知 |
+
+同期修正合规样例一处缺陷：`destinations` 原为 `[成都, 乐山]`，但第 3 天城市是 `都江堰`，
+违反 S-3（`days[].city ⊆ destinations`）。已补为 `[成都, 乐山, 都江堰]`。
+这是「样例必须被校验器验证」的直接收益——Schema 只校验结构，只有语义校验才发现这类矛盾。
+
 
 ## 5. 文件与引用方式
 
