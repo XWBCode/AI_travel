@@ -26,6 +26,13 @@ def _env(key: str, default: Any) -> Any:
     return default if value is None or value == "" else value
 
 
+def _env_bool(key: str, default: bool) -> bool:
+    value = os.getenv(key)
+    if value is None or value == "":
+        return default
+    return value.strip().lower() in ("1", "true", "yes", "on")
+
+
 @dataclass
 class LLMSettings:
     provider: str = "mock"            # mock | openai_compatible
@@ -35,6 +42,8 @@ class LLMSettings:
     timeout_seconds: int = 120
     max_tokens: int = 2048
     temperature: float = 0.7
+    # 计划生成时用服务商的严格 JSON 模式；自建/代理服务不兼容时置 false
+    json_mode: bool = True
 
     @property
     def is_mock(self) -> bool:
@@ -65,6 +74,7 @@ class Settings:
             timeout_seconds=int(_env("LLM_TIMEOUT_SECONDS", llm_raw.get("timeout_seconds", 120))),
             max_tokens=int(_env("LLM_MAX_TOKENS", llm_raw.get("max_tokens", 2048))),
             temperature=float(_env("LLM_TEMPERATURE", llm_raw.get("temperature", 0.7))),
+            json_mode=_env_bool("LLM_JSON_MODE", bool(llm_raw.get("json_mode", True))),
         )
 
         return cls(

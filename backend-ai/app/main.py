@@ -12,7 +12,8 @@ from fastapi.responses import JSONResponse
 from app import __version__
 from app.config import settings
 from app.llm.provider import LLMError, build_provider
-from app.routers import chat, health
+from app.plan.contract import DRAFT_SCHEMA_FILE, load_schema
+from app.routers import chat, health, plan
 
 logging.basicConfig(
     level=logging.INFO,
@@ -28,6 +29,9 @@ async def lifespan(app: FastAPI):
     logger.info("LLM Provider 已就绪: %s", app.state.provider.describe())
     if settings.llm.is_mock:
         logger.warning("当前处于 MOCK 模式，未调用真实大模型，请勿用于演示或验收")
+    # 契约是硬依赖：文件缺失或损坏时应当启动失败，而不是等第一个生成请求才报错
+    schema = load_schema(DRAFT_SCHEMA_FILE)
+    logger.info("TravelPlan 契约已加载: %s (schemaVersion=%s)", schema.get("$id"), "1.0")
     yield
     logger.info("AI 服务已关闭")
 
@@ -50,6 +54,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(chat.router)
+    app.include_router(plan.router)
 
     @app.exception_handler(LLMError)
     async def handle_llm_error(request: Request, exc: LLMError):

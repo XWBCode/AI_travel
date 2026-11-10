@@ -20,6 +20,8 @@ llm:
   timeout_seconds: 120
   max_tokens: 2048
   temperature: 0.7
+  # 计划生成走严格 JSON 模式（response_format）。自建/代理服务不支持时置 false
+  json_mode: true
 
 rag:
   enabled: false

@@ -34,8 +34,13 @@ class LLMProvider(abc.ABC):
     name: str = "base"
 
     @abc.abstractmethod
-    async def stream_chat(self, messages: list[ChatMessage], trace_id: str = "") -> AsyncGenerator[str, None]:
-        """流式返回增量文本。"""
+    async def stream_chat(self, messages: list[ChatMessage], trace_id: str = "",
+                          json_mode: bool = False) -> AsyncGenerator[str, None]:
+        """流式返回增量文本。
+
+        json_mode=True 时请求服务商按严格 JSON 返回（OpenAI 兼容的 response_format）。
+        计划生成场景用它把"模型自由发挥"的概率压低一个数量级；Mock 实现忽略该参数。
+        """
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -56,7 +61,8 @@ class MockProvider(LLMProvider):
     def __init__(self) -> None:
         self._model_label = "mock-model"
 
-    async def stream_chat(self, messages: list[ChatMessage], trace_id: str = "") -> AsyncGenerator[str, None]:
+    async def stream_chat(self, messages: list[ChatMessage], trace_id: str = "",
+                          json_mode: bool = False) -> AsyncGenerator[str, None]:
         last_user = next((m.content for m in reversed(messages) if m.role == "user"), "")
         reply = (
             "[MOCK] 当前为本地 Mock 模式，未调用真实大模型。\n\n"
@@ -83,7 +89,7 @@ class OpenAICompatibleProvider(LLMProvider):
     name = "openai_compatible"
 
     def __init__(self, base_url: str, model: str, api_key: str, timeout_seconds: int,
-                 max_tokens: int, temperature: float) -> None:
+                 max_tokens: int, temperature: float, json_mode: bool = True) -> None:
         if not api_key:
             raise LLMError("LLM_PROVIDER=openai_compatible 时必须配置 LLM_API_KEY")
         self._base_url = base_url.rstrip("/")
@@ -92,15 +98,21 @@ class OpenAICompatibleProvider(LLMProvider):
         self._timeout = timeout_seconds
         self._max_tokens = max_tokens
         self._temperature = temperature
+        # 部分自建/代理服务不认 response_format，会直接 400；可用 LLM_JSON_MODE=false 关掉
+        self._json_mode_supported = json_mode
 
-    async def stream_chat(self, messages: list[ChatMessage], trace_id: str = "") -> AsyncGenerator[str, None]:
+    async def stream_chat(self, messages: list[ChatMessage], trace_id: str = "",
+                          json_mode: bool = False) -> AsyncGenerator[str, None]:
         payload = {
             "model": self._model,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
             "stream": True,
-            "temperature": self._temperature,
+            # 生成结构化 JSON 时压低随机性，明显减少字段漂移
+            "temperature": 0.2 if json_mode else self._temperature,
             "max_tokens": self._max_tokens,
         }
+        if json_mode and self._json_mode_supported:
+            payload["response_format"] = {"type": "json_object"}
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
@@ -154,5 +166,6 @@ def build_provider(cfg) -> LLMProvider:
             timeout_seconds=cfg.timeout_seconds,
             max_tokens=cfg.max_tokens,
             temperature=cfg.temperature,
+            json_mode=cfg.json_mode,
         )
     raise LLMError(f"不支持的 LLM_PROVIDER: {cfg.provider}")

@@ -1,3 +1,6 @@
 # 开发/测试期依赖，不随服务部署（生产只装 requirements.txt）
 # 契约自检：python contracts/travel-plan/tools/validate_examples.py
+# 单元测试：python -m pytest tests -q
 jsonschema>=4.20
+pytest>=8.0
+pytest-asyncio>=0.23
