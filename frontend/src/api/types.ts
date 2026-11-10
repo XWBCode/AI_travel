@@ -6,8 +6,16 @@ export interface ApiResult<T> {
   traceId?: string
 }
 
+/**
+ * 主键类型。
+ * 后端用雪花算法生成 19 位 ID，超出 JS 的 Number.MAX_SAFE_INTEGER，
+ * 因此一律以字符串下发（见后端 JacksonConfig）。前端千万不要转成 number，
+ * 否则 2119988130910269442 会被四舍五入成 2119988130910269400，回传就查不到。
+ */
+export type Id = string
+
 export interface UserVO {
-  id: number
+  id: Id
   username: string
   nickname: string
   avatarUrl?: string
@@ -23,7 +31,7 @@ export interface LoginResponse {
 }
 
 export interface SessionVO {
-  id: number
+  id: Id
   title: string
   lastMessagePreview?: string
   messageCount: number
@@ -32,8 +40,8 @@ export interface SessionVO {
 }
 
 export interface MessageVO {
-  id: number
-  sessionId: number
+  id: Id
+  sessionId: Id
   role: 'user' | 'assistant' | 'tool' | 'system'
   content: string
   status: string

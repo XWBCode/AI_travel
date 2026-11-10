@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "build:only": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "npm run test:proxy && npm run test:stream-error",
+    "test:proxy": "node scripts/proxy-error.test.mjs",
+    "test:stream-error": "node scripts/stream-error.test.mjs"
   },
   "dependencies": {
     "axios": "^1.7.9",

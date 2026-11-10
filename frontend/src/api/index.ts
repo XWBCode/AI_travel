@@ -1,5 +1,5 @@
 import http from './http'
-import type { ApiResult, LoginResponse, MessageVO, SessionVO, UserVO } from './types'
+import type { ApiResult, Id, LoginResponse, MessageVO, SessionVO, UserVO } from './types'
 
 export const authApi = {
   login: (username: string, password: string) =>
@@ -14,12 +14,13 @@ export const authApi = {
 export const chatApi = {
   listSessions: () => http.get<ApiResult<SessionVO[]>>('/chat/sessions').then((r) => r.data.data),
 
-  listMessages: (sessionId: number) =>
+  // sessionId 是雪花 ID 字符串，直接拼进路径，不要转 Number
+  listMessages: (sessionId: Id) =>
     http.get<ApiResult<MessageVO[]>>(`/chat/sessions/${sessionId}/messages`).then((r) => r.data.data),
 
-  renameSession: (sessionId: number, title: string) =>
+  renameSession: (sessionId: Id, title: string) =>
     http.patch<ApiResult<void>>(`/chat/sessions/${sessionId}`, { title }).then((r) => r.data),
 
-  deleteSession: (sessionId: number) =>
+  deleteSession: (sessionId: Id) =>
     http.delete<ApiResult<void>>(`/chat/sessions/${sessionId}`).then((r) => r.data),
 }

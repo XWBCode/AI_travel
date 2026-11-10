@@ -3,22 +3,29 @@ import { onMounted, ref } from 'vue'
 import { marked } from 'marked'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { chatApi } from '@/api'
-import { streamChat } from '@/api/stream'
-import type { MessageVO, SessionVO } from '@/api/types'
+import { streamChat, type StreamError } from '@/api/stream'
+import type { Id, MessageVO, SessionVO } from '@/api/types'
 
 interface UiMessage {
-  id: number
+  /** 本地临时气泡用负数，落库后用后端返回的雪花 ID 字符串 */
+  id: number | Id
   role: 'user' | 'assistant'
   content: string
   status?: string
   model?: string
   /** 正在流式生成中，用于展示光标动画 */
   streaming?: boolean
+  /** 失败原因，独立成条展示，不再塞进 markdown 正文里 */
+  error?: string
+  /** 该回复对应的用户提问，供「重试」原样重发 */
+  retryContent?: string
+  /** 失败是否值得重试（4xx 里除 429 外重试也没用） */
+  canRetry?: boolean
 }
 
 const sessions = ref<SessionVO[]>([])
 const messages = ref<UiMessage[]>([])
-const currentSessionId = ref<number | null>(null)
+const currentSessionId = ref<Id | null>(null)
 const input = ref('')
 const sending = ref(false)
 const loadingMessages = ref(false)
@@ -45,7 +52,7 @@ async function loadSessions(): Promise<void> {
   }
 }
 
-async function selectSession(id: number): Promise<void> {
+async function selectSession(id: Id): Promise<void> {
   if (sending.value) {
     ElMessage.warning('AI 正在回复，请先等待或停止生成')
     return
@@ -81,11 +88,38 @@ async function send(): Promise<void> {
   if (!content || sending.value) return
 
   input.value = ''
+  await submit(content, true)
+}
+
+/** 失败后重试：复用原来的提问与气泡，避免重复插入一条用户消息 */
+async function retry(failed: UiMessage): Promise<void> {
+  if (sending.value) return
+  const content = failed.retryContent
+  if (!content) return
+  const index = messages.value.findIndex((m) => m.id === failed.id)
+  if (index >= 0) messages.value.splice(index, 1)
+  await submit(content, false)
+}
+
+/**
+ * 发起一轮对话。
+ * @param pushUser 是否新插入一条用户气泡（重试时为 false，原气泡还在）
+ */
+async function submit(content: string, pushUser: boolean): Promise<void> {
+  if (sending.value) return
   sending.value = true
   abortController = new AbortController()
 
-  messages.value.push({ id: tempId--, role: 'user', content })
-  const assistant: UiMessage = { id: tempId--, role: 'assistant', content: '', streaming: true }
+  if (pushUser) {
+    messages.value.push({ id: tempId--, role: 'user', content })
+  }
+  const assistant: UiMessage = {
+    id: tempId--,
+    role: 'assistant',
+    content: '',
+    streaming: true,
+    retryContent: content,
+  }
   messages.value.push(assistant)
 
   await scrollToBottom()
@@ -117,11 +151,12 @@ async function send(): Promise<void> {
         assistant.streaming = false
         void loadSessions()
       },
-      onError: (msg) => {
+      onError: (err: StreamError) => {
         assistant.status = 'FAILED'
         assistant.streaming = false
-        // 流式已产出的内容保留，并在末尾标注失败，避免用户误以为回复完整
-        assistant.content += `\n\n> ⚠️ 生成中断：${msg}`
+        // 已流出的部分内容保留；失败原因单独成条展示，便于用户判断该重试还是改提问
+        assistant.error = err.message
+        assistant.canRetry = err.retryable
       },
       onFinish: () => {
         assistant.streaming = false
@@ -217,6 +252,20 @@ function useSuggestion(text: string): void {
             <div v-else class="plain">{{ m.content }}</div>
             <span v-if="m.streaming" class="caret" />
             <div v-if="m.model" class="model-tag">{{ m.model }}</div>
+            <div v-if="m.error" class="bubble-error">
+              <span class="err-icon">⚠️</span>
+              <span class="err-text">{{ m.error }}</span>
+              <el-button
+                v-if="m.canRetry && !sending"
+                link
+                type="primary"
+                size="small"
+                class="retry-btn"
+                @click="retry(m)"
+              >
+                重试
+              </el-button>
+            </div>
           </div>
         </div>
       </div>
@@ -365,6 +414,9 @@ function useSuggestion(text: string): void {
   display: flex;
   gap: 12px;
   margin-bottom: 22px;
+  /* 显式占满可用宽度：否则 flex 行宽随内容浮动，失败提示这类固定下限宽度的
+     气泡会把整行撑到容器外，出现横向滚动条 */
+  width: 100%;
   max-width: 860px;
 }
 
@@ -395,11 +447,16 @@ function useSuggestion(text: string): void {
   color: #6b7785;
 }
 
+/*
+ * 气泡宽度按内容走：fit-content 会取「一行放得下的最大宽度」，
+ * 再由 max-width 兜住，这样中文不会因为 flex 的 min-content 收缩被挤成一列竖排。
+ */
 .bubble {
   padding: 12px 16px;
   border-radius: 14px;
   background: #fafbfc;
   border: 1px solid var(--at-border);
+  width: fit-content;
   min-width: 0;
   max-width: 100%;
 }
@@ -436,6 +493,41 @@ function useSuggestion(text: string): void {
   margin-top: 8px;
   font-size: 11px;
   color: #a8b1bd;
+}
+
+/* 空正文不占位（失败且未产出任何内容时） */
+.markdown-body:empty {
+  display: none;
+}
+
+/* 失败提示条：与正文区分开，避免用户把错误文案当成回答的一部分 */
+.bubble-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid #f6d5d5;
+  background: #fef4f4;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #c45656;
+}
+
+.err-icon {
+  flex: 0 0 auto;
+}
+
+.err-text {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.retry-btn {
+  flex: 0 0 auto;
+  font-size: 12px;
 }
 
 .composer {
