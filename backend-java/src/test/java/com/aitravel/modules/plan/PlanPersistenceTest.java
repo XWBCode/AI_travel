@@ -179,6 +179,81 @@ class PlanPersistenceTest {
         assertEquals(ErrorCode.FORBIDDEN, ex.getErrorCode());
     }
 
+    @Test
+    @DisplayName("M1 P2-4：编辑草稿——字段落库、version+1、改前改后各一份快照、天数同步到每日行程")
+    void draftCanBeEdited() {
+        stubAiReturns(PlanMutants.validDraft());
+        long planId = planService.generate(TEST_USER, messages()).path("planId").asLong();
+        assertEquals("成都乐山三日游", titleOf(planId));
+
+        JsonNode updated = planService.update(planId, TEST_USER,
+                body("{\"title\":\"成都四日美食\",\"days\":4,\"travelers\":3}"));
+
+        assertEquals("成都四日美食", updated.path("title").asText());
+        assertEquals(4, updated.path("basic").path("days").asInt());
+        assertEquals(3, updated.path("basic").path("travelers").asInt());
+        // 天数改了，结束日期必须跟着走：11-20 起 4 天 → 11-23
+        assertEquals("2026-11-20", updated.path("basic").path("startDate").asText());
+        assertEquals("2026-11-23", updated.path("basic").path("endDate").asText());
+        assertEquals(1, updated.path("version").asInt());
+
+        // 天数变多要补出第 4 天，否则会出现「头部 4 天、下面只列 3 天」
+        assertEquals(4, count("select count(*) from t_travel_day where plan_id = ?", planId));
+        assertEquals(1, count("select count(*) from t_travel_day "
+                + "where plan_id = ? and day_index = 4 and day_date = '2026-11-23'", planId));
+        // 改前（v0）+ 改后（v1）各一份快照，M2 回滚才有原稿可回
+        assertEquals(2, count("select count(*) from t_plan_version where plan_id = ?", planId));
+        assertEquals(1, count("select count(*) from t_plan_version "
+                + "where plan_id = ? and version_no = 0 and change_summary = '编辑前自动快照'", planId));
+
+        // 天数改少：尾部整天连同其行程项一起删掉（逻辑删除，统计要带 deleted = 0）
+        JsonNode shrunk = planService.update(planId, TEST_USER, body("{\"days\":2}"));
+        assertEquals(2, shrunk.path("basic").path("days").asInt());
+        assertEquals(2, count("select count(*) from t_travel_day "
+                + "where plan_id = ? and deleted = 0", planId));
+        assertEquals(3, count("select count(*) from t_travel_item where deleted = 0 and day_id in "
+                + "(select id from t_travel_day where plan_id = ? and deleted = 0)", planId),
+                "第 3 天的行程项应随该天一起删除（原样例共 4 项）");
+        // 统计值随删天重算：24 个 FactField 中至少少了第 3 天那一份
+        assertTrue(shrunk.path("unverifiedFieldCount").asInt() < 24,
+                "删掉整天后待核实字段数必须重算，不能沿用旧值");
+    }
+
+    @Test
+    @DisplayName("M1 P2-4：版本冲突与状态保护——过期版本改不动，已确认的不能改")
+    void editIsGuardedByVersionAndStatus() {
+        stubAiReturns(PlanMutants.validDraft());
+        long planId = planService.generate(TEST_USER, messages()).path("planId").asLong();
+
+        planService.update(planId, TEST_USER, body("{\"title\":\"改过一次\"}"));
+        assertEquals(1, versionOf(planId));
+
+        // 带着过期的 baseVersion 再提交：必须拒绝，且不能覆盖别人的修改
+        BizException conflict = assertThrows(BizException.class,
+                () -> planService.update(planId, TEST_USER,
+                        body("{\"title\":\"旧版本提交\",\"baseVersion\":0}")));
+        assertEquals(ErrorCode.PLAN_VERSION_CONFLICT, conflict.getErrorCode());
+        assertEquals("改过一次", titleOf(planId), "冲突的请求不得改动任何数据");
+
+        // 确认之后进入只读：编辑会让「确认」这个动作失去意义
+        planService.confirm(planId, TEST_USER);
+        BizException locked = assertThrows(BizException.class,
+                () -> planService.update(planId, TEST_USER, body("{\"title\":\"确认后再改\"}")));
+        assertEquals(ErrorCode.PLAN_STATE_INVALID, locked.getErrorCode());
+        assertEquals("改过一次", titleOf(planId));
+    }
+
+    @Test
+    @DisplayName("M1 P2-4：内容没变时不产生新版本（幂等保存）")
+    void noOpEditDoesNotCreateVersion() {
+        stubAiReturns(PlanMutants.validDraft());
+        long planId = planService.generate(TEST_USER, messages()).path("planId").asLong();
+
+        planService.update(planId, TEST_USER, body("{\"title\":\"成都乐山三日游\",\"days\":3}"));
+        assertEquals(0, versionOf(planId), "值与原来一致时不该推版本");
+        assertEquals(0, count("select count(*) from t_plan_version where plan_id = ?", planId));
+    }
+
     // ---------------- helpers ----------------
 
     private void stubAiReturns(JsonNode draft) {
@@ -195,6 +270,18 @@ class PlanPersistenceTest {
 
     private List<Map<String, String>> messages() {
         return List.of(Map.of("role", "user", "content", "我想去成都玩三天，预算三千，喜欢美食"));
+    }
+
+    private JsonNode body(String json) {
+        try {
+            return objectMapper.readTree(json);
+        } catch (Exception e) {
+            throw new IllegalStateException("测试请求体不是合法 JSON：" + json, e);
+        }
+    }
+
+    private String titleOf(long planId) {
+        return jdbc.queryForObject("select title from t_travel_plan where id = ?", String.class, planId);
     }
 
     private String statusOf(long planId) {

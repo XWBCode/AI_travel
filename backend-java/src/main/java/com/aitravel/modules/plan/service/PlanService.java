@@ -7,6 +7,7 @@ import com.aitravel.common.exception.BizException;
 import com.aitravel.modules.chat.service.AiServiceClient;
 import com.aitravel.modules.plan.dto.PlanDraftDto;
 import com.aitravel.modules.plan.dto.PlanSummaryVO;
+import com.aitravel.modules.plan.dto.PlanUpdateCommand;
 import com.aitravel.modules.plan.entity.PlanVersion;
 import com.aitravel.modules.plan.entity.TravelPlan;
 import com.aitravel.modules.plan.mapper.TravelPlanMapper;
@@ -105,6 +106,18 @@ public class PlanService {
     public JsonNode detail(Long planId, Long userId) {
         TravelPlan plan = store.loadOwned(planId, userId);
         return assembler.assemble(plan);
+    }
+
+    /**
+     * 编辑草稿基础信息（PATCH）。解析失败与规则冲突都在这里挡住，Store 只负责落库。
+     * <p>
+     * 没有实际变更时也会返回当前详情：对调用方来说「保存成功」的语义应当一致，
+     * 只是不会产生新版本。
+     */
+    public JsonNode update(Long planId, Long userId, JsonNode body) {
+        PlanUpdateCommand cmd = PlanUpdateCommand.parse(body);
+        store.updateBasic(planId, userId, cmd);
+        return detail(planId, userId);
     }
 
     public PageResult<PlanSummaryVO> list(Long userId, long page, long size) {

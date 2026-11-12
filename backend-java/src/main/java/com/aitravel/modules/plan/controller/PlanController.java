@@ -15,6 +15,7 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -27,8 +28,8 @@ import java.util.Map;
 /**
  * 计划接口（05 §5）。
  * <p>
- * M1 范围：生成、列表、详情、确认与状态迁移、版本列表。
- * 未实现（已写入开发计划，不得声称已完成）：PATCH 修改草稿、执行进度、调整建议、通知。
+ * M1 范围：生成、列表、详情、编辑草稿、确认与状态迁移、版本列表。
+ * 未实现（已写入开发计划，不得声称已完成）：行程条目增删、执行进度、调整建议、通知、版本回滚。
  * <p>
  * 权限一律由 {@link CurrentUser} + Service 层的归属校验保证；控制器不接收 userId 参数，
  * 避免越权（AC-14）。
@@ -60,6 +61,19 @@ public class PlanController {
     @GetMapping("/{id}")
     public Result<JsonNode> detail(@PathVariable Long id) {
         return Result.ok(planService.detail(id, CurrentUser.requireUserId()));
+    }
+
+    /**
+     * 编辑草稿的基础信息（标题/出发地/目的地/天数/人数/起止日期）。
+     * <p>
+     * PATCH 语义：只改请求体里出现的字段；传 {@code null} 表示清空该项。
+     * 并发安全由 {@code status + version} 双条件更新保证——同一版本只有一个请求能改成功，
+     * 其余返回 {@code 30104} 版本冲突。
+     */
+    @PatchMapping("/{id}")
+    public Result<JsonNode> update(@PathVariable Long id,
+                                   @RequestBody(required = false) JsonNode body) {
+        return Result.ok(planService.update(id, CurrentUser.requireUserId(), body));
     }
 
     /** 确认计划：DRAFT → CONFIRMED，并生成版本快照（AC-09） */

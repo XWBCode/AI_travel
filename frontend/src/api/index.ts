@@ -6,6 +6,7 @@ import type {
   MessageVO,
   PageResult,
   PlanSummaryVO,
+  PlanUpdatePayload,
   PlanVersionVO,
   SessionVO,
   TravelPlan,
@@ -50,6 +51,13 @@ export const plansApi = {
 
   versions: (id: Id) =>
     http.get<ApiResult<PlanVersionVO[]>>(`/plans/${id}/versions`).then((r) => r.data.data),
+
+  /**
+   * 编辑草稿基础信息。只有 DRAFT 能改，且必须带 baseVersion——
+   * 版本不一致会被后端拒绝（30104），这是「两个标签页同时改」时的保护。
+   */
+  update: (id: Id, payload: PlanUpdatePayload) =>
+    http.patch<ApiResult<TravelPlan>>(`/plans/${id}`, payload).then((r) => r.data.data),
 
   // 状态流转：后端按状态机拒绝非法跃迁，前端不做二次判断，只展示报错
   confirm: (id: Id) => http.post<ApiResult<void>>(`/plans/${id}/confirm`).then((r) => r.data),

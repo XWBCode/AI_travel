@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -58,6 +59,19 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Result<Void>> handleMissingParam(MissingServletRequestParameterException e) {
         return json(HttpStatus.BAD_REQUEST.value(),
                 Result.fail(ErrorCode.BAD_REQUEST, "缺少必填参数: " + e.getParameterName()));
+    }
+
+    /**
+     * 请求体不是合法 JSON（含「声明了 application/json 但 body 为空」）。
+     * <p>
+     * 不接住会落到兜底的 Exception 分支变成 500，前端只会看到「系统内部错误」，
+     * 而真实原因是它自己发了个空 body。
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Result<Void>> handleUnreadableBody(HttpMessageNotReadableException e) {
+        log.warn("请求体无法解析: {}", e.getMessage());
+        return json(HttpStatus.BAD_REQUEST.value(),
+                Result.fail(ErrorCode.BAD_REQUEST, "请求体不是合法的 JSON"));
     }
 
     @ExceptionHandler(NoHandlerFoundException.class)

@@ -11,6 +11,7 @@ import {
   type TravelPlan,
 } from '@/api/types'
 import FactBadge from '@/components/FactBadge.vue'
+import PlanEditDialog from '@/components/PlanEditDialog.vue'
 
 /**
  * 计划详情。
@@ -26,6 +27,7 @@ const plan = ref<TravelPlan | null>(null)
 const versions = ref<PlanVersionVO[]>([])
 const loading = ref(false)
 const acting = ref(false)
+const editing = ref(false)
 
 const planId = computed(() => String(route.params.id ?? ''))
 const status = computed(() => plan.value?.status ?? '')
@@ -161,6 +163,15 @@ onMounted(load)
             </div>
           </div>
           <div class="head-ops">
+            <!-- 只有草稿能改：已确认的行程改动会让「确认」失去意义（与后端状态机一致） -->
+            <el-button
+              v-if="status === 'DRAFT'"
+              size="small"
+              :disabled="acting"
+              @click="editing = true"
+            >
+              编辑
+            </el-button>
             <el-button
               v-for="action in actions"
               :key="action"
@@ -261,6 +272,9 @@ onMounted(load)
         <el-button type="primary" @click="router.push('/plans')">回到我的旅行</el-button>
       </el-empty>
     </div>
+
+    <!-- saved 与 refresh 都走 load()：保存后版本列表也变了，重新拉一遍最省事 -->
+    <PlanEditDialog v-model="editing" :plan="plan" @saved="load" @refresh="load" />
   </div>
 </template>
 

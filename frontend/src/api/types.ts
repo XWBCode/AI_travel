@@ -145,6 +145,23 @@ export interface PlanVersionVO {
   createTime?: string
 }
 
+/**
+ * `PATCH /api/plans/{id}` 的请求体。
+ * <p>
+ * 只带要改的字段：不传 = 不改，传 null = 清空。`baseVersion` 用来做乐观锁，
+ * 与库里不一致时后端返回 30104，前端应提示并刷新，而不是覆盖别人的修改。
+ */
+export interface PlanUpdatePayload {
+  title?: string
+  originCity?: string | null
+  destination?: string | null
+  days?: number | null
+  travelers?: number | null
+  startDate?: string | null
+  endDate?: string | null
+  baseVersion?: number
+}
+
 /** 计划状态机（05 文档 §5）：前端只按状态显示可执行的动作 */
 export const PLAN_STATUS_TEXT: Record<string, string> = {
   DRAFT: '草稿',
