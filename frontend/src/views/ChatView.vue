@@ -7,6 +7,7 @@ import { buildFollowUpReply, isFollowUpComplete, type FollowUpQuestion } from '@
 import { streamChat, type PlanIntentPayload, type StreamError } from '@/api/stream'
 import type { Id, MessageVO, SessionVO, TravelPlan } from '@/api/types'
 import PlanCard from '@/components/PlanCard.vue'
+import { formatProgress } from '@/utils/planProgress'
 
 interface UiMessage {
   /** 本地临时气泡用负数，落库后用后端返回的雪花 ID 字符串 */
@@ -39,6 +40,8 @@ interface UiMessage {
   answered?: boolean
   /** 生成计划中的阶段提示，如「正在生成计划…」 */
   progress?: string
+  /** 进度提示的起始时间戳，用来算「已等待 N 秒」 */
+  progressStart?: number
   /** 计划被拒的原因（SCHEMA_VIOLATION / NEED_MORE_INFO），与 error 分开存 */
   rejectReason?: string
 }
@@ -52,6 +55,31 @@ const loadingMessages = ref(false)
 const scrollBox = ref<HTMLElement | null>(null)
 let abortController: AbortController | null = null
 let tempId = -1
+
+/**
+ * 秒表：真实模型出一份计划要 30-45s，只显示「正在生成计划…」用户会怀疑卡死。
+ * tick 只负责推动重渲染，秒数由 formatProgress 现算，避免存两份状态。
+ */
+const tick = ref(0)
+let tickTimer: number | null = null
+
+function startTick() {
+  if (tickTimer !== null) return
+  tickTimer = window.setInterval(() => {
+    tick.value += 1
+  }, 1000)
+}
+
+function stopTick() {
+  if (tickTimer === null) return
+  window.clearInterval(tickTimer)
+  tickTimer = null
+}
+
+function progressText(m: UiMessage): string {
+  void tick.value // 读一下，秒表走动时模板才会重算
+  return formatProgress(m.progress ?? '', m.progressStart)
+}
 
 const suggestions = [
   '帮我规划一趟云南五日游，预算 5000，喜欢自然风景',
@@ -199,12 +227,16 @@ async function submit(content: string, pushUser: boolean): Promise<void> {
       },
       onPlanProgress: (info) => {
         assistant.progress = info.message
+        assistant.progressStart = Date.now()
+        startTick()
         void scrollToBottom()
       },
       onPlanDraft: (plan) => {
         // 卡片是结构化数据，不走 markdown；正文仍然由后端下发的摘要文本填充
         assistant.plan = plan
         assistant.progress = ''
+        assistant.progressStart = undefined
+        stopTick()
         void scrollToBottom()
       },
       onPlanSaved: (info) => {
@@ -215,6 +247,7 @@ async function submit(content: string, pushUser: boolean): Promise<void> {
         // 具体文案交给随后的 error 事件统一展示，这里只记录分类
         assistant.rejectReason = info.reason
         assistant.progress = ''
+        stopTick()
       },
       onDelta: (piece) => {
         assistant.content += piece
@@ -225,12 +258,14 @@ async function submit(content: string, pushUser: boolean): Promise<void> {
         assistant.model = info.model
         assistant.streaming = false
         assistant.progress = ''
+        stopTick()
         void loadSessions()
       },
       onError: (err: StreamError) => {
         assistant.status = 'FAILED'
         assistant.streaming = false
         assistant.progress = ''
+        stopTick()
         // 已流出的部分内容保留；失败原因单独成条展示，便于用户判断该重试还是改提问
         assistant.error = err.message
         assistant.canRetry = err.retryable
@@ -328,7 +363,7 @@ function useSuggestion(text: string): void {
             />
             <div v-else class="plain">{{ m.content }}</div>
             <div v-if="m.progress" class="plan-progress">
-              <span class="spinner" />{{ m.progress }}
+              <span class="spinner" />{{ progressText(m) }}
             </div>
             <PlanCard v-if="m.plan" :plan="m.plan" />
             <div v-if="m.followUps?.length" class="followup" :class="{ answered: m.answered }">

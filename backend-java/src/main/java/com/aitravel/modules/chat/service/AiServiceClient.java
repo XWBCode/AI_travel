@@ -136,8 +136,9 @@ public class AiServiceClient {
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
                 .header("X-Trace-Id", traceId == null ? "" : traceId)
-                // 单次生成上限 120s（05 §6），与 SSE 的 180s 兜底区分开
-                .timeout(Duration.ofSeconds(120))
+                // 单次计划生成上限 180s：Mock 下毫秒级，真实模型实测 30-45s，
+                // 留出 7 天以上长行程的余量；仍小于 SSE 的 240s 兜底，超时由本层先报错
+                .timeout(Duration.ofSeconds(180))
                 .POST(HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8))
                 .build();
 

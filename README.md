@@ -161,6 +161,19 @@ LLM_MODEL=deepseek-chat
 LLM_API_KEY=sk-xxxx
 ```
 
+接入时要一起调的三项（只改 provider 不改这几项会失败）：
+
+| 变量 | 建议值 | 为什么 |
+|---|---|---|
+| `LLM_MAX_TOKENS` | `8192` | 一份 3 天计划的 JSON 约 15k 字符，2048/4096 会被截断（`TRUNCATED`） |
+| `LLM_TIMEOUT_SECONDS` | `240` | 真实模型一份 3 天计划实测 33-41s；该值要大于 Java 的 180s 读超时 |
+| `LLM_JSON_MODE` | `true` | 网关不支持 `response_format: json_object` 时置 `false` |
+
+> 换模型先用 `backend-ai/scripts/probe_model.py` 验证，不必起三端：
+> `python scripts/probe_model.py --base-url ... --api-key ... --model ...`
+> 它走线上同一条生成+校验路径，只有"契约校验通过"才算这个模型可用。
+> 推理型模型（返回 `reasoning_content`）会拿推理过程消耗 `max_tokens`，容易截断且慢，计划场景不推荐。
+
 ## SSE 事件协议（前后端契约）
 
 `POST /api/chat/stream` 返回 `text/event-stream`：

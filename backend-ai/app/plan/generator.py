@@ -19,7 +19,7 @@ from typing import Any, AsyncGenerator
 from app.llm.prompts import build_plan_messages
 from app.llm.provider import ChatMessage, LLMError, LLMProvider
 from app.plan import mock
-from app.plan.contract import verify
+from app.plan.contract import count_fact_fields, verify
 from app.plan.intent import TravelIntent
 
 logger = logging.getLogger("ai-travel.plan")
@@ -142,6 +142,17 @@ async def run_generation(
         yield "plan_rejected", {"reason": reason, "errors": [parse_error], "traceId": trace_id}
         yield "error", {"code": 10002, "message": "生成结果格式不正确，请重试"}
         return
+
+    # unverifiedFieldCount 是派生统计量：数的是"整份 JSON 里有几个待核实事实字段"。
+    # 让模型自己数并不可靠（实测每个模型都会数错，且错多少全看运气），
+    # 这里按 count_fact_fields 重算覆盖 —— 这不是"替模型补内容"，
+    # 只是把一个机械统计量的计算权从模型手里收回来。
+    declared = plan.get("unverifiedFieldCount")
+    recounted = count_fact_fields(plan)
+    if declared != recounted:
+        logger.info("plan unverifiedFieldCount 重算 trace=%s declared=%s actual=%s",
+                    trace_id, declared, recounted)
+        plan["unverifiedFieldCount"] = recounted
 
     problems = verify(plan)
     if problems:

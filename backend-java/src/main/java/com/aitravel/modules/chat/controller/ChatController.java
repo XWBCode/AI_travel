@@ -92,8 +92,9 @@ public class ChatController {
             turns.add(Map.of("role", "user", "content", req.getContent()));
         }
 
-        // 3 分钟，与 AI 服务读超时对齐
-        SseEmitter emitter = new SseEmitter(180_000L);
+        // 真实模型生成一份计划要 30-45s，240s 兜底必须大于 AiServiceClient 的 180s 上限，
+        // 否则会出现「AI 侧还没超时、连接先被掐断」的假失败
+        SseEmitter emitter = new SseEmitter(240_000L);
         AtomicBoolean canceled = new AtomicBoolean(false);
 
         emitter.onTimeout(() -> {

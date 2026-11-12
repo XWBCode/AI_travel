@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 
@@ -21,7 +22,7 @@ from app.plan.contract import (  # noqa: E402
     validate_draft,
     verify,
 )
-from app.plan.generator import extract_json  # noqa: E402
+from app.plan.generator import extract_json, run_generation  # noqa: E402
 from app.plan.intent import analyze  # noqa: E402
 from app.plan.mock import build_plan  # noqa: E402
 
@@ -283,3 +284,69 @@ def test_intent_endpoint():
     assert body["code"] == 0
     assert body["data"]["needPlan"] is True
     assert body["data"]["slots"]["originCity"] == "西安"
+
+
+# ---------------- 真实模型路径：派生统计量必须由服务端重算 ----------------
+
+class _ReplayProvider:
+    """回放固定文本的假 provider，用来模拟"真实模型"分支而不真的联网。"""
+
+    name = "replay"
+
+    def __init__(self, text: str) -> None:
+        self._text = text
+
+    async def stream_chat(self, messages, trace_id: str = "", json_mode: bool = False):
+        for i in range(0, len(self._text), 200):
+            yield self._text[i:i + 200]
+
+    def describe(self) -> dict:
+        return {"provider": self.name, "model": "replay-model", "real": True}
+
+
+def _run(provider, intent) -> list[tuple[str, dict]]:
+    history = [{"role": "user", "content": "帮我规划成都三天，2个人"}]
+
+    async def collect():
+        return [item async for item in run_generation(provider, intent, history, trace_id="t")]
+
+    return asyncio.run(collect())
+
+
+def test_unverified_count_recomputed_not_trusted():
+    """模型自报的 unverifiedFieldCount 一律不可信，服务端按实际数量覆盖。
+
+    这是真实模型联调时最常见的一类拒绝：让模型数 JSON 里的字段个数，它一定数错，
+    且错多少全看运气（实测同一 prompt 三次分别数成 60/58/63）。
+    """
+    intent = analyze("帮我规划成都三天，2个人")
+    plan = build_plan(intent)
+    actual = count_fact_fields(plan)
+    plan["unverifiedFieldCount"] = 999  # 模拟模型数错
+
+    events = _run(_ReplayProvider(json.dumps(plan, ensure_ascii=False)), intent)
+    names = [n for n, _ in events]
+
+    assert "plan_rejected" not in names, events
+    draft = next(d for n, d in events if n == "plan_draft")
+    assert draft["mock"] is False
+    assert draft["plan"]["unverifiedFieldCount"] == actual
+    assert actual > 0
+
+
+def test_real_path_still_rejects_genuinely_invalid_plan():
+    """重算只修正"统计量"，不能掩盖模型真的违反契约。
+
+    把预算分类写成非法值，必须仍然被拒绝——否则重算就成了万能橡皮图章。
+    """
+    intent = analyze("帮我规划成都三天，2个人")
+    plan = build_plan(intent)
+    plan["budget"]["items"][0]["category"] = "SHOPPING"
+
+    events = _run(_ReplayProvider(json.dumps(plan, ensure_ascii=False)), intent)
+    names = [n for n, _ in events]
+
+    assert "plan_draft" not in names
+    assert "plan_rejected" in names
+    rejected = next(d for n, d in events if n == "plan_rejected")
+    assert rejected["reason"] == "SCHEMA_VIOLATION"

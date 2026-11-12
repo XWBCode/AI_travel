@@ -8,11 +8,12 @@
     "build": "vue-tsc --noEmit && vite build",
     "build:only": "vite build",
     "preview": "vite preview",
-    "test": "npm run test:proxy && npm run test:stream-error && npm run test:followup && npm run test:plan-edit",
+    "test": "npm run test:proxy && npm run test:stream-error && npm run test:followup && npm run test:plan-edit && npm run test:plan-progress",
     "test:proxy": "node scripts/proxy-error.test.mjs",
     "test:stream-error": "node scripts/stream-error.test.mjs",
     "test:followup": "node scripts/followup.test.mjs",
-    "test:plan-edit": "node scripts/plan-edit.test.mjs"
+    "test:plan-edit": "node scripts/plan-edit.test.mjs",
+    "test:plan-progress": "node scripts/plan-progress.test.mjs"
   },
   "dependencies": {
     "axios": "^1.7.9",

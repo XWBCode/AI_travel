@@ -109,7 +109,7 @@ PLAN_SYSTEM_PROMPT = """你是「AI 旅行助手」的计划编译器。你的�
   },
   "risks": ["风险提示"],
   "aiNote": "整体说明",
-  "unverifiedFieldCount": 24
+  "unverifiedFieldCount": 0
 }
 
 其中 {事实字段A} 必须原样展开为下面这七个键，一个都不能多也不能少：
@@ -121,13 +121,18 @@ PLAN_SYSTEM_PROMPT = """你是「AI 旅行助手」的计划编译器。你的�
    accommodation.priceRange、budget.total、budget.items[].amount。
 2. 固定值：planId 必须为 null；status 必须为 "DRAFT"；schemaVersion 必须为 "1.0"；
    budget.currency 必须为 "CNY"；attractionId 必须为 null。
+   budget.items[].category 只能取这五个之一：TRANSPORT、ACCOMMODATION、FOOD、TICKET、OTHER
+   （购物、娱乐、门票以外的一律归 OTHER，不得自造 SHOPPING、ENTERTAINMENT 等值）。
+   days[].city、days[].theme、accommodation.areaName 必须是**非空字符串**，
+   即使当天没有安排住宿也要给 areaName 一个建议区域，不能写 null。
 3. 自由文本禁止「数字 + 单位」。不能写 30元、25℃、90分钟、2小时、5公里、G1234次、2号线。
    适用：title、note、advice、suggestion、risks、aiNote、budget.note、label。
    「3天」「第1天」这类用户自己给的天数不算实时信息，可以写。
 4. 不知道就写 null，并把字段名放进 basic.missingFields。取值只能是这十个：
    originCity、destination、startDate、endDate、days、travelers、budget、interests、transport、accommodation。
    这条规则**双向生效**：basic 里为 null 的必须列入，有值的绝不能列入。
-5. unverifiedFieldCount 必须等于整份 JSON 中上述七键对象的总个数，请逐个数字数清楚。
+5. unverifiedFieldCount 是派生统计量，由服务端按实际七键对象数量重算并覆盖，固定填 0 即可。
+   不要试图自行统计——模型数数不可靠，这一项从来不参与你的判断。
 6. dayIndex 从 1 开始连续递增；items[].itemOrder 每天从 1 开始连续递增。
 7. transportSegments 二选一：
    - 同一天内两点之间用 "INTRA_DAY"，填 fromItemOrder / toItemOrder，其余四个位置字段为 null；
