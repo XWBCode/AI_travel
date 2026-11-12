@@ -127,3 +127,38 @@ export interface PlanSummaryVO {
   version: number
   updateTime: string
 }
+
+/** 分页容器，与后端 PageResult 对齐 */
+export interface PageResult<T> {
+  records: T[]
+  total: number
+  page: number
+  size: number
+}
+
+/** 计划版本快照（确认或编辑时产生，只读展示） */
+export interface PlanVersionVO {
+  id: Id
+  versionNo: number
+  changeSummary?: string
+  operatorId?: Id
+  createTime?: string
+}
+
+/** 计划状态机（05 文档 §5）：前端只按状态显示可执行的动作 */
+export const PLAN_STATUS_TEXT: Record<string, string> = {
+  DRAFT: '草稿',
+  CONFIRMED: '已确认',
+  IN_PROGRESS: '进行中',
+  COMPLETED: '已完成',
+  CANCELLED: '已取消',
+}
+
+/** 从状态到可执行动作的映射，避免前端各页面各写一套判断 */
+export const PLAN_ACTIONS: Record<string, Array<'confirm' | 'start' | 'complete' | 'cancel'>> = {
+  DRAFT: ['confirm', 'cancel'],
+  CONFIRMED: ['start', 'cancel'],
+  IN_PROGRESS: ['complete', 'cancel'],
+  COMPLETED: [],
+  CANCELLED: [],
+}

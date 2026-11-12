@@ -52,8 +52,9 @@ public class PlanController {
     @GetMapping
     public Result<PageResult<PlanSummaryVO>> list(
             @RequestParam(defaultValue = "1") long page,
-            @RequestParam(defaultValue = "20") long size) {
-        return Result.ok(planService.list(CurrentUser.requireUserId(), page, size));
+            @RequestParam(defaultValue = "20") long size,
+            @RequestParam(required = false) String status) {
+        return Result.ok(planService.list(CurrentUser.requireUserId(), page, size, status));
     }
 
     @GetMapping("/{id}")

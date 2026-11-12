@@ -108,14 +108,26 @@ public class PlanService {
     }
 
     public PageResult<PlanSummaryVO> list(Long userId, long page, long size) {
+        return list(userId, page, size, null);
+    }
+
+    /**
+     * @param status 可选状态过滤（DRAFT/CONFIRMED/...）。空或非法值都按「全部」处理——
+     *               列表页加个筛选不该因为拼错参数就报错
+     */
+    public PageResult<PlanSummaryVO> list(Long userId, long page, long size, String status) {
         long safePage = Math.max(page, 1);
         // 05 §5：size ≤ 50，超出按 50 处理而不是报错，减少前端一个小坑
         long safeSize = Math.min(Math.max(size, 1), 50);
 
-        IPage<TravelPlan> result = planMapper.selectPage(new Page<>(safePage, safeSize),
-                Wrappers.<TravelPlan>lambdaQuery()
-                        .eq(TravelPlan::getUserId, userId)
-                        .orderByDesc(TravelPlan::getUpdateTime));
+        var query = Wrappers.<TravelPlan>lambdaQuery()
+                .eq(TravelPlan::getUserId, userId)
+                .orderByDesc(TravelPlan::getUpdateTime);
+        if (status != null && !status.isBlank()) {
+            query.eq(TravelPlan::getStatus, status.trim().toUpperCase());
+        }
+
+        IPage<TravelPlan> result = planMapper.selectPage(new Page<>(safePage, safeSize), query);
         List<PlanSummaryVO> records = result.getRecords().stream().map(this::toSummary).toList();
         return PageResult.of(records, result.getTotal(), safePage, safeSize);
     }

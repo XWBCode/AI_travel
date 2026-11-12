@@ -1,8 +1,21 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import type { PlanDay, TravelPlan } from '@/api/types'
 
 const props = defineProps<{ plan: TravelPlan }>()
+
+const router = useRouter()
+
+/**
+ * 卡片只存在于当前这条流里，刷新就没了；计划本身已落库。
+ * 给一个明确入口，用户想细看时不必重新生成一遍。
+ */
+function openDetail(): void {
+  if (!props.plan.planId) return
+  // planId 是雪花 ID 字符串，直接拼；转 Number 会丢精度
+  router.push(`/plans/${props.plan.planId}`)
+}
 
 /** 默认只展开两天，避免一条回复把整屏占满；用户可自行展开 */
 const PREVIEW_DAYS = 2
@@ -80,7 +93,7 @@ const metaParts = computed(() => {
         {{ expanded ? '收起' : `展开全部 ${allDays.length} 天` }}
       </button>
       <span v-else class="filler" />
-      <span class="hint">计划已保存，可继续在对话里调整</span>
+      <button type="button" class="link detail" @click="openDetail">查看详情 →</button>
     </footer>
   </section>
 </template>
@@ -236,8 +249,9 @@ const metaParts = computed(() => {
   flex: 1;
 }
 
-.hint {
-  font-size: 11px;
-  color: #a8b1bd;
+/* 右侧入口比左侧的展开按钮更强调：展开是辅助，去详情才是下一步 */
+.detail {
+  margin-left: auto;
+  font-weight: 500;
 }
 </style>

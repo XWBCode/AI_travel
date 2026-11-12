@@ -1,5 +1,16 @@
 import http from './http'
-import type { ApiResult, Id, LoginResponse, MessageVO, SessionVO, UserVO } from './types'
+import type {
+  ApiResult,
+  Id,
+  LoginResponse,
+  MessageVO,
+  PageResult,
+  PlanSummaryVO,
+  PlanVersionVO,
+  SessionVO,
+  TravelPlan,
+  UserVO,
+} from './types'
 
 export const authApi = {
   login: (username: string, password: string) =>
@@ -23,4 +34,26 @@ export const chatApi = {
 
   deleteSession: (sessionId: Id) =>
     http.delete<ApiResult<void>>(`/chat/sessions/${sessionId}`).then((r) => r.data),
+}
+
+/**
+ * 计划接口。所有 id 都是雪花 ID 字符串，直接拼路径，不要转 Number
+ * （19 位超出 JS 安全整数，转了就查不到）。
+ */
+export const plansApi = {
+  list: (params: { page?: number; size?: number; status?: string } = {}) =>
+    http
+      .get<ApiResult<PageResult<PlanSummaryVO>>>('/plans', { params })
+      .then((r) => r.data.data),
+
+  detail: (id: Id) => http.get<ApiResult<TravelPlan>>(`/plans/${id}`).then((r) => r.data.data),
+
+  versions: (id: Id) =>
+    http.get<ApiResult<PlanVersionVO[]>>(`/plans/${id}/versions`).then((r) => r.data.data),
+
+  // 状态流转：后端按状态机拒绝非法跃迁，前端不做二次判断，只展示报错
+  confirm: (id: Id) => http.post<ApiResult<void>>(`/plans/${id}/confirm`).then((r) => r.data),
+  start: (id: Id) => http.post<ApiResult<void>>(`/plans/${id}/start`).then((r) => r.data),
+  complete: (id: Id) => http.post<ApiResult<void>>(`/plans/${id}/complete`).then((r) => r.data),
+  cancel: (id: Id) => http.post<ApiResult<void>>(`/plans/${id}/cancel`).then((r) => r.data),
 }

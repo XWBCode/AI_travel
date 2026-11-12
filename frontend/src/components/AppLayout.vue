@@ -9,13 +9,15 @@ const userStore = useUserStore()
 
 const menus = [
   { key: '/chat', label: 'AI 助手', icon: '💬', ready: true },
-  { key: '/placeholder/plans', label: '我的旅行', icon: '🧭', ready: false },
+  { key: '/plans', label: '我的旅行', icon: '🧭', ready: true },
   { key: '/placeholder/community', label: '旅行社区', icon: '📖', ready: false },
   { key: '/placeholder/settings', label: '设置', icon: '⚙️', ready: false },
 ]
 
 const active = computed(() => {
   if (route.path.startsWith('/chat')) return '/chat'
+  // 详情页 /plans/:id 也要点亮「我的旅行」
+  if (route.path.startsWith('/plans')) return '/plans'
   return route.path
 })
 

@@ -22,6 +22,18 @@ const router = createRouter({
           meta: { title: 'AI 助手' },
         },
         {
+          path: 'plans',
+          name: 'plans',
+          component: () => import('@/views/PlansView.vue'),
+          meta: { title: '我的旅行' },
+        },
+        {
+          path: 'plans/:id',
+          name: 'plan-detail',
+          component: () => import('@/views/PlanDetailView.vue'),
+          meta: { title: '计划详情' },
+        },
+        {
           path: 'placeholder/:module',
           name: 'placeholder',
           component: () => import('@/views/PlaceholderView.vue'),
