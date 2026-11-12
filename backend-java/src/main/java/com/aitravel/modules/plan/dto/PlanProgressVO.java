@@ -42,6 +42,9 @@ public class PlanProgressVO {
 
         private String city;
 
+        /** 当日主题（「老城漫步」这类），当日执行页需要它来说明今天的主线 */
+        private String theme;
+
         private int total;
 
         private int completed;

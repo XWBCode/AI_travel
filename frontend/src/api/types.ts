@@ -216,6 +216,8 @@ export interface ProgressDay {
   dayIndex: number
   date?: string | null
   city?: string
+  /** 当日主题，当日执行页用它说明今天的主线 */
+  theme?: string
   total: number
   completed: number
   items: ProgressItem[]
@@ -232,4 +234,33 @@ export interface ProgressItem {
   completedAt?: string
   /** 下一个待完成项，全表只有一个 */
   next: boolean
+}
+
+/** 当日执行视图的相位：决定页面显示「今天」「还没出发」「已超期」还是「缺出发日期」 */
+export type TodayPhase = 'TODAY' | 'BEFORE' | 'AFTER' | 'UNANCHORED'
+
+/**
+ * 当日执行视图（`GET /api/plans/{id}/today`，R-21）。
+ *
+ * `date` 是计算所用的「今天」——由前端按本机时区传上去，服务端原样回传。
+ * 不在前端自己算「第几天」：一旦两端口径不同，用户在跨时区旅行时就会看到昨天的安排，
+ * 而且这种偏差只在深夜出现，几乎无从复现。
+ */
+export interface PlanTodayVO {
+  planId: Id
+  status: string
+  title: string
+  /** YYYY-MM-DD */
+  date: string
+  phase: TodayPhase
+  /** UNANCHORED 时为 null */
+  dayIndex?: number | null
+  totalDays?: number | null
+  daysUntilStart?: number
+  daysSinceEnd?: number
+  /** UNANCHORED 时为 null；空白日返回 items 为空的卡片 */
+  day?: ProgressDay | null
+  total: number
+  completed: number
+  percent: number
 }

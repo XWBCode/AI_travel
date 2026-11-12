@@ -90,6 +90,26 @@ public class PlanProgressService {
         return build(plan);
     }
 
+    /**
+     * 行程项 → 视图项。{@code next} 不在这里定：它取决于「整份计划里第一个没做的」，
+     * 需要跨天遍历，是 {@link #build} 的状态；当日视图则只在本日内选。
+     * <p>
+     * 抽出来是为了让两个视图共用同一套字段映射——两边各写一份，
+     * 迟早会出现「详情页显示 09:00、当日页显示 9:00」这种对不上的情况。
+     */
+    static PlanProgressVO.ItemProgress project(TravelItem item, LocalDateTime completedAt) {
+        PlanProgressVO.ItemProgress iv = new PlanProgressVO.ItemProgress();
+        iv.setItemId(String.valueOf(item.getId()));
+        iv.setItemOrder(item.getItemOrder());
+        iv.setTitle(item.getTitle());
+        iv.setStartTime(item.getStartTime() == null ? null : item.getStartTime().format(HHMM));
+        iv.setEndTime(item.getEndTime() == null ? null : item.getEndTime().format(HHMM));
+        iv.setNote(item.getNote());
+        iv.setCompleted(completedAt != null);
+        iv.setCompletedAt(completedAt);
+        return iv;
+    }
+
     /** 归属校验：item → day → plan，任一层对不上都按「不存在」处理，不暴露他人数据结构 */
     private void requireItemInPlan(Long planId, Long itemId) {
         TravelItem item = itemId == null ? null : itemMapper.selectById(itemId);
@@ -141,6 +161,7 @@ public class PlanProgressService {
             dv.setDayIndex(day.getDayIndex());
             dv.setDate(day.getDayDate());
             dv.setCity(day.getCity());
+            dv.setTheme(day.getTheme());
 
             List<TravelItem> dayItems = itemsByDay.getOrDefault(day.getId(), List.of()).stream()
                     .sorted(Comparator.comparing(TravelItem::getItemOrder,
@@ -149,25 +170,15 @@ public class PlanProgressService {
 
             List<PlanProgressVO.ItemProgress> itemVOs = new ArrayList<>();
             for (TravelItem item : dayItems) {
-                PlanProgressVO.ItemProgress iv = new PlanProgressVO.ItemProgress();
-                iv.setItemId(String.valueOf(item.getId()));
-                iv.setItemOrder(item.getItemOrder());
-                iv.setTitle(item.getTitle());
-                iv.setStartTime(item.getStartTime() == null ? null : item.getStartTime().format(HHMM));
-                iv.setEndTime(item.getEndTime() == null ? null : item.getEndTime().format(HHMM));
-                iv.setNote(item.getNote());
-
-                LocalDateTime at = completedAt.get(item.getId());
-                iv.setCompleted(at != null);
-                iv.setCompletedAt(at);
-                if (at == null && !nextAssigned) {
+                PlanProgressVO.ItemProgress iv = project(item, completedAt.get(item.getId()));
+                if (!iv.isCompleted() && !nextAssigned) {
                     // 只有第一个未完成项标 next：「接下来做哪件」只能有一个答案
                     iv.setNext(true);
                     nextAssigned = true;
                 }
 
                 total++;
-                if (at != null) {
+                if (iv.isCompleted()) {
                     done++;
                 }
                 itemVOs.add(iv);

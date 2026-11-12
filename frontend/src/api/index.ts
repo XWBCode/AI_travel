@@ -8,6 +8,7 @@ import type {
   PlanProgressVO,
   PlanRollbackResult,
   PlanSummaryVO,
+  PlanTodayVO,
   PlanUpdatePayload,
   PlanVersionVO,
   SessionVO,
@@ -63,13 +64,27 @@ export const plansApi = {
 
   // 状态流转：后端按状态机拒绝非法跃迁，前端不做二次判断，只展示报错
   confirm: (id: Id) => http.post<ApiResult<void>>(`/plans/${id}/confirm`).then((r) => r.data),
-  start: (id: Id) => http.post<ApiResult<void>>(`/plans/${id}/start`).then((r) => r.data),
+  /**
+   * 开始行程。带 startDate 表示用户确认了出发日——计划没有出发日时，
+   * 这是唯一能把「第几天」钉到真实日期的入口；不传则沿用计划原值或服务端当天。
+   */
+  start: (id: Id, startDate?: string) =>
+    http.post<ApiResult<void>>(`/plans/${id}/start`, startDate ? { startDate } : undefined).then((r) => r.data),
   complete: (id: Id) => http.post<ApiResult<void>>(`/plans/${id}/complete`).then((r) => r.data),
   cancel: (id: Id) => http.post<ApiResult<void>>(`/plans/${id}/cancel`).then((r) => r.data),
 
   /** 执行进度。任何状态可读，草稿阶段返回全 0 */
   progress: (id: Id) =>
     http.get<ApiResult<PlanProgressVO>>(`/plans/${id}/progress`).then((r) => r.data.data),
+
+  /**
+   * 当日执行视图。date 传本机今天（YYYY-MM-DD）：服务端时区与用户所在时区可能差一天，
+   * 用服务器时间算会让跨时区用户在深夜看到昨天的行程。
+   */
+  today: (id: Id, date?: string) =>
+    http
+      .get<ApiResult<PlanTodayVO>>(`/plans/${id}/today`, { params: date ? { date } : undefined })
+      .then((r) => r.data.data),
 
   /**
    * 勾选 / 取消勾选行程项，返回最新进度。

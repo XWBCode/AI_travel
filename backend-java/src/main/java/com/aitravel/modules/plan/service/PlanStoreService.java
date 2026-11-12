@@ -480,6 +480,15 @@ public class PlanStoreService {
                 .map(TravelDay::getId)
                 .toList();
         if (!removedDayIds.isEmpty()) {
+            // 先按 itemId 清进度：行程项一删，progress 行就失去了归属，
+            // 留着的孤儿行不会报错，但会让「完成了多少项」这类按 plan 直接 count 的查询虚高
+            List<Long> removedItemIds = itemMapper.selectList(Wrappers.<TravelItem>lambdaQuery()
+                            .in(TravelItem::getDayId, removedDayIds))
+                    .stream().map(TravelItem::getId).toList();
+            if (!removedItemIds.isEmpty()) {
+                progressMapper.delete(Wrappers.<TravelProgress>lambdaQuery()
+                        .in(TravelProgress::getItemId, removedItemIds));
+            }
             itemMapper.delete(Wrappers.<TravelItem>lambdaQuery().in(TravelItem::getDayId, removedDayIds));
             segmentMapper.delete(Wrappers.<TransportSegment>lambdaQuery()
                     .in(TransportSegment::getDayId, removedDayIds));
@@ -535,9 +544,80 @@ public class PlanStoreService {
         }
     }
 
+    /**
+     * 开始旅行，并确定「第 1 天到底是哪一天」。
+     *
+     * <p>「开始」是唯一能把相对天数钉到绝对日期的时机：计划可以只有天数没有出发日
+     * （用户说「东京玩五天」就能生成），此时 {@code t_travel_day.day_date} 全是 null，
+     * 当日执行页算不出「今天对应第几天」。所以这里做三件事：
+     * <ol>
+     *   <li>锚点优先级：请求显式传入 &gt; 计划已有出发日 &gt; 东八区当天；</li>
+     *   <li>出发日与结束日一起回填，并按 {@code 出发日 + (dayIndex-1)} 重算全部 day_date；</li>
+     *   <li>锚点确实变了就写一份版本快照——改日期是改内容，回滚要能回得去。</li>
+     * </ol>
+     *
+     * <p>只改日期、不动天序号与行程项：锚定是「给已有内容贴上日期」，不是重排行程。
+     *
+     * @param requestedStart 用户确认的出发日，可为 null（沿用计划原值或服务器当天）
+     */
     @Transactional
-    public void start(Long planId, Long userId) {
-        transit(planId, userId, PlanStatus.IN_PROGRESS, TravelPlan::getStartedAt);
+    public void start(Long planId, Long userId, LocalDate requestedStart) {
+        TravelPlan plan = loadOwned(planId, userId);
+        PlanStatus current = PlanStatus.parse(plan.getStatus());
+        current.requireTransitionTo(PlanStatus.IN_PROGRESS);
+
+        LocalDate anchor = requestedStart != null ? requestedStart : plan.getStartDate();
+        if (anchor == null) {
+            anchor = PlanDates.today();
+        }
+        boolean anchorChanged = !anchor.equals(plan.getStartDate());
+        int totalDays = resolveTotalDays(plan);
+        LocalDate endDate = totalDays > 0 ? anchor.plusDays(totalDays - 1L) : null;
+
+        var update = Wrappers.<TravelPlan>lambdaUpdate()
+                .eq(TravelPlan::getId, planId)
+                .eq(TravelPlan::getStatus, current.name())
+                .eq(TravelPlan::getVersion, plan.getVersion())
+                .set(TravelPlan::getStatus, PlanStatus.IN_PROGRESS.name())
+                .set(TravelPlan::getStartedAt, LocalDateTime.now())
+                .set(TravelPlan::getStartDate, anchor)
+                .set(TravelPlan::getEndDate, endDate)
+                .setSql("version = version + 1");
+        if (planMapper.update(null, update) == 0) {
+            throw conflict(planId);
+        }
+
+        if (anchorChanged) {
+            reindexDayDates(planId, anchor);
+            TravelPlan after = planMapper.selectById(planId);
+            writeSnapshotIfAbsent(after, after.getVersion(),
+                    "开始旅行并锚定出发日期 " + anchor, userId);
+        }
+        log.info("开始旅行 planId={} anchor={} anchorChanged={} totalDays={}",
+                planId, anchor, anchorChanged, totalDays);
+    }
+
+    /** 天数以计划字段为准；字段被清空时退回天表行数，避免算出「0 天」的结束日 */
+    private int resolveTotalDays(TravelPlan plan) {
+        if (plan.getDays() != null && plan.getDays() > 0) {
+            return plan.getDays();
+        }
+        Long rows = dayMapper.selectCount(Wrappers.<TravelDay>lambdaQuery()
+                .eq(TravelDay::getPlanId, plan.getId()));
+        return rows == null ? 0 : rows.intValue();
+    }
+
+    /** 把出发日重算到每一天；日期已经对上就不写库，避免无意义的 update */
+    private void reindexDayDates(Long planId, LocalDate startDate) {
+        List<TravelDay> days = dayMapper.selectList(Wrappers.<TravelDay>lambdaQuery()
+                .eq(TravelDay::getPlanId, planId));
+        for (TravelDay day : days) {
+            LocalDate expected = startDate.plusDays(day.getDayIndex() - 1L);
+            if (!Objects.equals(day.getDayDate(), expected)) {
+                day.setDayDate(expected);
+                dayMapper.updateById(day);
+            }
+        }
     }
 
     @Transactional

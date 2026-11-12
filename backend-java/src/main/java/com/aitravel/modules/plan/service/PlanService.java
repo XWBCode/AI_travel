@@ -20,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -150,7 +151,16 @@ public class PlanService {
     }
 
     public void start(Long planId, Long userId) {
-        store.start(planId, userId);
+        store.start(planId, userId, null);
+    }
+
+    /**
+     * 开始旅行，并显式指定出发日（当日执行页的锚点，05 §5.7）。
+     *
+     * @param startDate 用户确认的出发日；null 表示沿用计划已有出发日，没有则取服务器当天
+     */
+    public void start(Long planId, Long userId, LocalDate startDate) {
+        store.start(planId, userId, startDate);
     }
 
     public void complete(Long planId, Long userId) {

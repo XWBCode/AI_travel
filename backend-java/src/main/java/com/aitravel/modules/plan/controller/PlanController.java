@@ -5,8 +5,10 @@ import com.aitravel.common.api.Result;
 import com.aitravel.common.web.CurrentUser;
 import com.aitravel.modules.plan.dto.PlanProgressVO;
 import com.aitravel.modules.plan.dto.PlanSummaryVO;
+import com.aitravel.modules.plan.dto.PlanTodayVO;
 import com.aitravel.modules.plan.service.PlanProgressService;
 import com.aitravel.modules.plan.service.PlanService;
+import com.aitravel.modules.plan.service.PlanTodayService;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -16,6 +18,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -25,6 +28,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -44,6 +48,7 @@ public class PlanController {
 
     private final PlanService planService;
     private final PlanProgressService progressService;
+    private final PlanTodayService todayService;
 
     /** 触发生成；返回落库后的计划详情（stored 模型） */
     @PostMapping("/generate")
@@ -87,9 +92,17 @@ public class PlanController {
         return Result.ok();
     }
 
+    /**
+     * 开始行程：CONFIRMED → IN_PROGRESS。
+     * <p>
+     * 请求体可选。带 {@code startDate} 表示用户确认了出发日——计划没有出发日时，
+     * 这是唯一能把「第几天」钉到真实日期的入口（05 §5.7）；不带则沿用计划原值，
+     * 仍为空就取服务器当天（东八区）。
+     */
     @PostMapping("/{id}/start")
-    public Result<Void> start(@PathVariable Long id) {
-        planService.start(id, CurrentUser.requireUserId());
+    public Result<Void> start(@PathVariable Long id,
+                              @RequestBody(required = false) StartRequest req) {
+        planService.start(id, CurrentUser.requireUserId(), req == null ? null : req.getStartDate());
         return Result.ok();
     }
 
@@ -123,6 +136,23 @@ public class PlanController {
     }
 
     /**
+     * 当日执行视图（M2，R-21）。
+     * <p>
+     * {@code date} 是<b>用户本地的今天</b>，由前端传上来：服务端时区与用户所在时区可能差一天，
+     * 拿服务器时间算会让跨时区用户在深夜看到昨天的行程。缺省时按服务端东八区当天兜底。
+     * <p>
+     * 越界不报错：未出发返回 {@code BEFORE} + 第 1 天预览，超期返回 {@code AFTER} + 最后一天；
+     * 计划没有出发日返回 {@code UNANCHORED}，由前端引导补日期或直接开始旅行。
+     */
+    @GetMapping("/{id}/today")
+    public Result<PlanTodayVO> today(
+            @PathVariable Long id,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return Result.ok(todayService.today(id, CurrentUser.requireUserId(), date));
+    }
+
+    /**
      * 执行进度（M2）。任何状态都可读：草稿阶段返回全 0，前端据此决定是否渲染勾选框。
      */
     @GetMapping("/{id}/progress")
@@ -142,6 +172,16 @@ public class PlanController {
                                                @Valid @RequestBody ProgressRequest req) {
         return Result.ok(progressService.mark(id, CurrentUser.requireUserId(),
                 req.getItemId(), req.getCompleted() == null || req.getCompleted()));
+    }
+
+    @Data
+    public static class StartRequest {
+
+        /**
+         * 用户确认的出发日；缺省表示沿用计划已有出发日，没有则用服务器当天。
+         * 不做「不得早于今天」这类校验：用户可能昨天就出发了，今天才点开页面。
+         */
+        private LocalDate startDate;
     }
 
     @Data

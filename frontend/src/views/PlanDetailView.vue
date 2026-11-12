@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, onMounted, ref } from 'vue'
+import { computed, h, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { plansApi } from '@/api'
@@ -9,13 +9,20 @@ import {
   type PlanDay,
   type PlanItem,
   type PlanProgressVO,
+  type PlanTodayVO,
   type PlanVersionVO,
   type ProgressItem,
   type TravelPlan,
 } from '@/api/types'
 import FactBadge from '@/components/FactBadge.vue'
 import PlanEditDialog from '@/components/PlanEditDialog.vue'
+import PlanStartDialog from '@/components/PlanStartDialog.vue'
+import PlanTodayPanel from '@/components/PlanTodayPanel.vue'
 import { canRollback, canRollbackTo, rollbackConfirmText, rollbackSuccessText, versionLabel } from '@/utils/rollback'
+import { clientDate, defaultScheduleView } from '@/utils/today'
+
+/** 跨零点检查的定时器句柄（60s 一次的轻量比较） */
+let rolloverTimer: number | undefined
 
 /**
  * 计划详情。
@@ -38,6 +45,13 @@ const acting = ref(false)
 const editing = ref(false)
 /** 正在回滚的版本号，避免连点；null 表示没有进行中的回滚 */
 const rollingBack = ref<number | null>(null)
+/** 当日执行视图；终态不请求（后端也会拒），保持 null 即可 */
+const today = ref<PlanTodayVO | null>(null)
+/** 正在提交的当日行程项，避免连点 */
+const todayMarking = ref<string | null>(null)
+/** 今日 / 全部日程：进行中且能算出今天时默认「今日」 */
+const scheduleView = ref<'today' | 'all'>('all')
+const startDialog = ref(false)
 
 const planId = computed(() => String(route.params.id ?? ''))
 const status = computed(() => plan.value?.status ?? '')
@@ -69,6 +83,8 @@ async function load(): Promise<void> {
     // 版本列表与进度都是补充信息，失败不该拖垮整页
     versions.value = await plansApi.versions(planId.value).catch(() => [])
     progress.value = await plansApi.progress(planId.value).catch(() => null)
+    await loadToday()
+    scheduleView.value = defaultScheduleView(status.value, today.value)
   } catch {
     plan.value = null
   } finally {
@@ -76,8 +92,36 @@ async function load(): Promise<void> {
   }
 }
 
+/**
+ * 读当日视图。
+ *
+ * 日期按本机时区传：服务端与用户所在时区可能差一天，用服务器时间算会让
+ * 跨时区用户在深夜看到昨天的行程。终态不请求，避免每次进页面都撞一个 30103。
+ */
+async function loadToday(): Promise<void> {
+  if (!planId.value || status.value === 'COMPLETED' || status.value === 'CANCELLED') {
+    today.value = null
+    return
+  }
+  today.value = await plansApi.today(planId.value, clientDate()).catch(() => null)
+}
+
 /** 只有进行中能打勾；已完成看汇总，草稿/已确认还没出发 */
 const canTrack = computed(() => status.value === 'IN_PROGRESS')
+
+/** 当日卡片里勾选：与「全部日程」共用同一个接口，只刷新当日视图 */
+async function toggleToday(itemId: string, completed: boolean): Promise<void> {
+  if (!plan.value || todayMarking.value) return
+  todayMarking.value = itemId
+  try {
+    progress.value = await plansApi.markProgress(plan.value.planId, itemId, completed)
+    await loadToday()
+  } catch {
+    // 状态机拒绝（如行程被别处结束）由拦截器提示
+  } finally {
+    todayMarking.value = null
+  }
+}
 
 const progressSummary = computed(() => {
   const p = progress.value
@@ -127,6 +171,11 @@ const ACTION_TEXT: Record<string, string> = {
 
 async function runAction(action: 'confirm' | 'start' | 'complete' | 'cancel'): Promise<void> {
   if (!plan.value || acting.value) return
+  // 开始行程要先确认出发日：这一天就是第 1 天，不能由系统替用户默认
+  if (action === 'start') {
+    startDialog.value = true
+    return
+  }
   if (action === 'confirm' || action === 'cancel') {
     const tip =
       action === 'confirm'
@@ -239,7 +288,21 @@ function goBack(): void {
   else router.push('/plans')
 }
 
-onMounted(load)
+/** 跨零点：页面不刷新也要从今天翻到明天，否则凌晨还停在昨天的行程 */
+function checkRollover(): void {
+  if (today.value && clientDate() !== today.value.date) void loadToday()
+}
+
+onMounted(() => {
+  void load()
+  rolloverTimer = window.setInterval(checkRollover, 60_000)
+  window.addEventListener('focus', checkRollover)
+})
+
+onBeforeUnmount(() => {
+  if (rolloverTimer) window.clearInterval(rolloverTimer)
+  window.removeEventListener('focus', checkRollover)
+})
 </script>
 
 <template>
@@ -300,7 +363,7 @@ onMounted(load)
 
         <!-- 执行进度：进行中才可勾选，已完成只读。草稿/已确认还没出发，不占版面 -->
         <div
-          v-if="progressSummary && (status === 'IN_PROGRESS' || status === 'COMPLETED')"
+          v-if="progressSummary && (status === 'IN_PROGRESS' || status === 'COMPLETED') && scheduleView === 'all'"
           class="track"
         >
           <div class="track-head">
@@ -321,7 +384,37 @@ onMounted(load)
         </div>
 
         <section class="block">
-          <h2>每日安排</h2>
+          <div class="block-head">
+            <h2>每日安排</h2>
+            <!-- 只有算得出「今天」才给「今日」：没有出发日时硬切过去只会看到一张空卡片 -->
+            <div v-if="today" class="switch">
+              <button
+                type="button"
+                :class="{ on: scheduleView === 'today' }"
+                @click="scheduleView = 'today'"
+              >
+                今日
+              </button>
+              <button
+                type="button"
+                :class="{ on: scheduleView === 'all' }"
+                @click="scheduleView = 'all'"
+              >
+                全部日程
+              </button>
+            </div>
+          </div>
+
+          <PlanTodayPanel
+            v-if="today && scheduleView === 'today'"
+            :today="today"
+            :status="status"
+            :marking="todayMarking"
+            @mark="toggleToday"
+            @anchor="startDialog = true"
+          />
+
+          <template v-else>
           <div v-for="day in plan.days ?? []" :key="day.dayIndex" class="day">
             <div class="day-head">
               <span class="day-index">{{ dayTitle(day) }}</span>
@@ -369,6 +462,7 @@ onMounted(load)
               这一天还没有具体安排。在对话里说一句想怎么过，比如「第 4 天想逛街和吃火锅」，就能补上。
             </p>
           </div>
+          </template>
         </section>
 
         <section v-if="plan.budget?.items?.length" class="block">
@@ -437,6 +531,8 @@ onMounted(load)
 
     <!-- saved 与 refresh 都走 load()：保存后版本列表也变了，重新拉一遍最省事 -->
     <PlanEditDialog v-model="editing" :plan="plan" @saved="load" @refresh="load" />
+    <!-- 开始行程必须经过这一步：选定的日期就是第 1 天 -->
+    <PlanStartDialog v-model="startDialog" :plan="plan" @started="load" />
   </div>
 </template>
 
@@ -584,6 +680,42 @@ onMounted(load)
 
 .block {
   margin-top: 26px;
+}
+
+.block-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.block-head h2 {
+  margin: 0;
+}
+
+.switch {
+  display: flex;
+  padding: 2px;
+  border: 1px solid var(--at-border);
+  border-radius: 999px;
+  background: #f7f9fb;
+}
+
+.switch button {
+  padding: 3px 12px;
+  font-size: 12px;
+  color: var(--at-text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.switch button.on {
+  color: var(--at-primary);
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
 }
 
 .block h2 {
