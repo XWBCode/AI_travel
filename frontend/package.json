@@ -8,9 +8,10 @@
     "build": "vue-tsc --noEmit && vite build",
     "build:only": "vite build",
     "preview": "vite preview",
-    "test": "npm run test:proxy && npm run test:stream-error",
+    "test": "npm run test:proxy && npm run test:stream-error && npm run test:followup",
     "test:proxy": "node scripts/proxy-error.test.mjs",
-    "test:stream-error": "node scripts/stream-error.test.mjs"
+    "test:stream-error": "node scripts/stream-error.test.mjs",
+    "test:followup": "node scripts/followup.test.mjs"
   },
   "dependencies": {
     "axios": "^1.7.9",

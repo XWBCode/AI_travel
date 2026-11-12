@@ -1,18 +1,20 @@
 import { getToken } from '@/api/http'
 import type { Id, TravelPlan } from '@/api/types'
+import { parseFollowUps, type FollowUpQuestion } from './followup'
 import { toStreamError, type StreamError } from './stream-error'
 
 export type { StreamError } from './stream-error'
+export type { FollowUpOption, FollowUpQuestion } from './followup'
 
 /**
  * 后端在生成计划前下发的意图判定（05 文档 §4）。
- * `followUps` 已经是中文问句，可直接渲染成快捷回复。
+ * `followUps` 每项带中文问句与候选值，可直接渲染成可点选的追问。
  */
 export interface PlanIntentPayload {
   scene: string
   needPlan: boolean
   missingFields: string[]
-  followUps: string[]
+  followUps: FollowUpQuestion[]
 }
 
 export interface StreamHandlers {
@@ -134,7 +136,7 @@ function dispatch(chunk: string, handlers: StreamHandlers): void {
         scene: String(payload.scene ?? ''),
         needPlan: Boolean(payload.needPlan),
         missingFields: toStringArray(payload.missingFields),
-        followUps: toStringArray(payload.followUps),
+        followUps: parseFollowUps(payload.followUps),
       })
       break
     case 'plan_progress':

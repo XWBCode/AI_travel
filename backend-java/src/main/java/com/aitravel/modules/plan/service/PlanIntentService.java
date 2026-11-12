@@ -30,10 +30,28 @@ public class PlanIntentService {
     /**
      * 真正卡住生成的两项（05 §3 硬性规则 3：追问最多 2 个）。
      * 其余缺失字段（出发地/兴趣/交通/住宿）由「待核实」承载，不追问。
+     * <p>
+     * 每个问题都带候选值：用户点一下就能答完，不必猜我们想要什么格式。
+     * <p>
+     * {@code value} 是**补答短语**而不是裸值（「去成都玩」而非「成都」）。它会被拼到
+     * 用户原话后面重新判定，必须自己带上足够的语法信息——「帮我规划三天，成都」
+     * 抽不出目的地，而「帮我规划三天，去成都玩」可以。见 {@code buildFollowUpReply}。
      */
-    private static final Map<String, String> QUESTIONS = Map.of(
-            "destination", "想去哪个城市？",
-            "days", "大概玩几天？"
+    private static final Map<String, FollowUpQuestion> QUESTIONS = Map.of(
+            "destination", new FollowUpQuestion("destination", "想去哪个城市？", List.of(
+                    new FollowUpOption("成都", "去成都玩"),
+                    new FollowUpOption("西安", "去西安玩"),
+                    new FollowUpOption("杭州", "去杭州玩"),
+                    new FollowUpOption("厦门", "去厦门玩"),
+                    new FollowUpOption("北京", "去北京玩"),
+                    new FollowUpOption("三亚", "去三亚玩")
+            )),
+            "days", new FollowUpQuestion("days", "大概玩几天？", List.of(
+                    new FollowUpOption("2 天", "玩2天"),
+                    new FollowUpOption("3 天", "玩3天"),
+                    new FollowUpOption("4 天", "玩4天"),
+                    new FollowUpOption("5 天", "玩5天")
+            ))
     );
 
     /** 追问字段在追问文案里的编号前缀，避免用户看到技术字段名 */
@@ -55,10 +73,11 @@ public class PlanIntentService {
 
         boolean needPlan = data.path("needPlan").asBoolean(false);
         List<String> missing = readStrings(data.path("missingFields"));
-        List<String> questions = new ArrayList<>();
+        List<FollowUpQuestion> questions = new ArrayList<>();
         for (String field : readStrings(data.path("followUps"))) {
-            String question = QUESTIONS.get(field);
-            if (question != null && !questions.contains(question) && questions.size() < MAX_QUESTIONS) {
+            FollowUpQuestion question = QUESTIONS.get(field);
+            if (question != null && questions.stream().noneMatch(q -> q.field().equals(field))
+                    && questions.size() < MAX_QUESTIONS) {
                 questions.add(question);
             }
         }
@@ -81,16 +100,16 @@ public class PlanIntentService {
      * 用编号列表而不是「请补充 days」这种技术表述——这句话会原样落库并展示给用户。
      */
     public String buildFollowUpText(PlanIntent intent) {
-        List<String> questions = intent.questions();
+        List<FollowUpQuestion> questions = intent.followUps();
         String lead = questions.size() > 1
                 ? "好的，再确认两件事就能出计划："
                 : "好的，再确认一件事就能出计划：";
         StringBuilder sb = new StringBuilder(lead);
         sb.append("\n\n");
         for (int i = 0; i < questions.size(); i++) {
-            sb.append(i + 1).append(". ").append(questions.get(i)).append('\n');
+            sb.append(i + 1).append(". ").append(questions.get(i).question()).append('\n');
         }
-        sb.append("\n补充后我直接给你排行程。");
+        sb.append("\n直接点下面的选项，或者按自己的说法补充都行；补齐我就开始排行程。");
         return sb.toString();
     }
 
@@ -110,8 +129,30 @@ public class PlanIntentService {
     /**
      * @param needPlan       槽位是否足够直接生成
      * @param missingFields  Schema basic 视角的缺失字段（含由「待核实」承载的可选项）
-     * @param questions      需要向用户追问的问句，最多 2 条
+     * @param followUps      需要向用户追问的问题（含候选值），最多 2 条
      */
-    public record PlanIntent(boolean needPlan, List<String> missingFields, List<String> questions) {
+    public record PlanIntent(boolean needPlan, List<String> missingFields, List<FollowUpQuestion> followUps) {
+
+        /** 仅问句，供落库文案与日志使用 */
+        public List<String> questions() {
+            return followUps.stream().map(FollowUpQuestion::question).toList();
+        }
+    }
+
+    /**
+     * 一个槽位的追问。
+     *
+     * @param field    槽位名，前端按它记录用户选了哪一组
+     * @param question 展示给用户的问句
+     * @param options  候选值，至少一个；用户点选后拼成一条补答消息
+     */
+    public record FollowUpQuestion(String field, String question, List<FollowUpOption> options) {
+    }
+
+    /**
+     * @param label 按钮上的短标签（「3 天」）
+     * @param value 拼进补答消息的短语（「玩3天」），需自带语法信息
+     */
+    public record FollowUpOption(String label, String value) {
     }
 }

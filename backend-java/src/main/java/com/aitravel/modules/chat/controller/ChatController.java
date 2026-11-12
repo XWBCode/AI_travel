@@ -43,6 +43,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * <pre>
  * event: meta          data: {"sessionId":123,"userMessageId":456}
  * event: intent        data: {"scene":"plan","needPlan":true,"missingFields":[],"followUps":[]}
+ * // followUps 元素：{"field":"days","question":"大概玩几天？","options":[{"label":"3 天","value":"玩3天"}]}
  * event: plan_progress data: {"stage":"generating","message":"正在生成计划…"}
  * event: plan_draft    data: {"plan":{TravelPlan v1}}
  * event: plan_saved    data: {"planId":"...","version":0}
@@ -244,7 +245,7 @@ public class ChatController {
         event.put("scene", "plan");
         event.put("needPlan", false);
         event.put("missingFields", intent.missingFields());
-        event.put("followUps", intent.questions());
+        event.put("followUps", intent.followUps());
         sendSafe(emitter, "intent", event);
 
         String text = planIntentService.buildFollowUpText(intent);

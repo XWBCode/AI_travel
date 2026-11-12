@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { marked } from 'marked'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { chatApi } from '@/api'
+import { buildFollowUpReply, isFollowUpComplete, type FollowUpQuestion } from '@/api/followup'
 import { streamChat, type PlanIntentPayload, type StreamError } from '@/api/stream'
 import type { Id, MessageVO, SessionVO, TravelPlan } from '@/api/types'
 import PlanCard from '@/components/PlanCard.vue'
@@ -28,6 +29,14 @@ interface UiMessage {
   planId?: Id
   /** 意图判定结果：needPlan=false 时是追问，用于展示待补充项 */
   intent?: PlanIntentPayload
+  /** 追问的可选项，按槽位分组；为空则不渲染按钮 */
+  followUps?: FollowUpQuestion[]
+  /** 触发追问的那句原话，补答时拼在它后面重新提交 */
+  originContent?: string
+  /** 已选值：槽位名 → 选项 value */
+  picks?: Record<string, string>
+  /** 已经点选提交过，避免重复发送 */
+  answered?: boolean
   /** 生成计划中的阶段提示，如「正在生成计划…」 */
   progress?: string
   /** 计划被拒的原因（SCHEMA_VIOLATION / NEED_MORE_INFO），与 error 分开存 */
@@ -113,6 +122,31 @@ async function retry(failed: UiMessage): Promise<void> {
 }
 
 /**
+ * 点选追问选项。
+ *
+ * 多个缺失字段要逐组选，选满才提交：只补一半就发消息，后端会再问一遍剩下那个，
+ * 用户会觉得自己点了个寂寞。单一问题时点一下即达成 complete，直接发送。
+ *
+ * 提交的是「原话 + 补答」而不是只有补答——槽位抽取看的是整句话，
+ * 只发「玩3天」会丢掉「成都」。见 {@link buildFollowUpReply}。
+ */
+async function pickFollowUp(message: UiMessage, field: string, value: string): Promise<void> {
+  if (sending.value || message.answered || !message.followUps?.length) return
+  const picks = { ...(message.picks ?? {}), [field]: value }
+  message.picks = picks
+
+  const fields = message.followUps.map((q) => q.field)
+  if (!isFollowUpComplete(picks, fields)) return
+
+  const reply = buildFollowUpReply(message.originContent ?? '', picks, fields)
+  if (!reply) return
+
+  // 先落标记再发送：提交过程中按钮应保持禁用，避免连点发出两轮
+  message.answered = true
+  await submit(reply, true)
+}
+
+/**
  * 发起一轮对话。
  * @param pushUser 是否新插入一条用户气泡（重试时为 false，原气泡还在）
  */
@@ -155,6 +189,13 @@ async function submit(content: string, pushUser: boolean): Promise<void> {
       },
       onIntent: (payload) => {
         assistant.intent = payload
+        // 只有「需要追问」且确实带了候选值时才渲染按钮：没有选项的追问
+        // 会让用户点不动，那种情况正文里已经把问题写清楚了
+        if (!payload.needPlan && payload.followUps.length > 0) {
+          assistant.followUps = payload.followUps
+          assistant.originContent = content
+          assistant.picks = {}
+        }
       },
       onPlanProgress: (info) => {
         assistant.progress = info.message
@@ -290,6 +331,25 @@ function useSuggestion(text: string): void {
               <span class="spinner" />{{ m.progress }}
             </div>
             <PlanCard v-if="m.plan" :plan="m.plan" />
+            <div v-if="m.followUps?.length" class="followup" :class="{ answered: m.answered }">
+              <div v-for="q in m.followUps" :key="q.field" class="followup-row">
+                <span class="followup-q">{{ q.question }}</span>
+                <div class="followup-options">
+                  <button
+                    v-for="opt in q.options"
+                    :key="opt.value"
+                    type="button"
+                    class="followup-chip"
+                    :class="{ picked: m.picks?.[q.field] === opt.value }"
+                    :disabled="sending || m.answered"
+                    @click="pickFollowUp(m, q.field, opt.value)"
+                  >
+                    {{ opt.label }}
+                  </button>
+                </div>
+              </div>
+              <p v-if="!m.answered" class="followup-tip">选完自动继续，也可以直接打字补充</p>
+            </div>
             <span v-if="m.streaming" class="caret" />
             <div v-if="m.model" class="model-tag">{{ m.model }}</div>
             <div v-if="m.error" class="bubble-error">
@@ -563,6 +623,73 @@ function useSuggestion(text: string): void {
   to {
     transform: rotate(360deg);
   }
+}
+
+/*
+ * 追问选项：给明确候选值，点选即补齐。
+ * 每组一个问句 + 若干按钮，多组时用户逐组选择，选满自动发送。
+ */
+.followup {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--at-border);
+}
+
+.followup-row + .followup-row {
+  margin-top: 10px;
+}
+
+.followup-q {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 13px;
+  color: var(--at-text-secondary);
+}
+
+.followup-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.followup-chip {
+  padding: 6px 14px;
+  border: 1px solid var(--at-border);
+  border-radius: 16px;
+  background: #fff;
+  font-size: 13px;
+  line-height: 1.2;
+  color: var(--at-text);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.followup-chip:hover:not(:disabled) {
+  border-color: var(--at-primary);
+  color: var(--at-primary);
+}
+
+.followup-chip:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.followup-chip.picked {
+  border-color: var(--at-primary);
+  background: var(--at-primary);
+  color: #fff;
+  opacity: 1;
+}
+
+/* 已提交后整体淡出，但保留用户选了什么，便于回看 */
+.followup.answered .followup-q {
+  opacity: 0.5;
+}
+
+.followup-tip {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: #a8b1bd;
 }
 
 /* 失败提示条：与正文区分开，避免用户把错误文案当成回答的一部分 */
