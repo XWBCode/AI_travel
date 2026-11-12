@@ -3,8 +3,9 @@ import { onMounted, ref } from 'vue'
 import { marked } from 'marked'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { chatApi } from '@/api'
-import { streamChat, type StreamError } from '@/api/stream'
-import type { Id, MessageVO, SessionVO } from '@/api/types'
+import { streamChat, type PlanIntentPayload, type StreamError } from '@/api/stream'
+import type { Id, MessageVO, SessionVO, TravelPlan } from '@/api/types'
+import PlanCard from '@/components/PlanCard.vue'
 
 interface UiMessage {
   /** 本地临时气泡用负数，落库后用后端返回的雪花 ID 字符串 */
@@ -21,6 +22,16 @@ interface UiMessage {
   retryContent?: string
   /** 失败是否值得重试（4xx 里除 429 外重试也没用） */
   canRetry?: boolean
+  /** 本轮生成的计划草稿（已通过契约校验），渲染成卡片而不是 Markdown */
+  plan?: TravelPlan
+  /** 落库后的计划 ID，用于跳转详情 */
+  planId?: Id
+  /** 意图判定结果：needPlan=false 时是追问，用于展示待补充项 */
+  intent?: PlanIntentPayload
+  /** 生成计划中的阶段提示，如「正在生成计划…」 */
+  progress?: string
+  /** 计划被拒的原因（SCHEMA_VIOLATION / NEED_MORE_INFO），与 error 分开存 */
+  rejectReason?: string
 }
 
 const sessions = ref<SessionVO[]>([])
@@ -113,14 +124,15 @@ async function submit(content: string, pushUser: boolean): Promise<void> {
   if (pushUser) {
     messages.value.push({ id: tempId--, role: 'user', content })
   }
-  const assistant: UiMessage = {
+  messages.value.push({
     id: tempId--,
     role: 'assistant',
     content: '',
     streaming: true,
     retryContent: content,
-  }
-  messages.value.push(assistant)
+  })
+  // 取数组里的代理对象：改 push 之前的原始对象不会触发视图更新
+  const assistant = messages.value[messages.value.length - 1]
 
   await scrollToBottom()
 
@@ -141,6 +153,28 @@ async function submit(content: string, pushUser: boolean): Promise<void> {
           })
         }
       },
+      onIntent: (payload) => {
+        assistant.intent = payload
+      },
+      onPlanProgress: (info) => {
+        assistant.progress = info.message
+        void scrollToBottom()
+      },
+      onPlanDraft: (plan) => {
+        // 卡片是结构化数据，不走 markdown；正文仍然由后端下发的摘要文本填充
+        assistant.plan = plan
+        assistant.progress = ''
+        void scrollToBottom()
+      },
+      onPlanSaved: (info) => {
+        assistant.planId = info.planId
+        void loadSessions()
+      },
+      onPlanRejected: (info) => {
+        // 具体文案交给随后的 error 事件统一展示，这里只记录分类
+        assistant.rejectReason = info.reason
+        assistant.progress = ''
+      },
       onDelta: (piece) => {
         assistant.content += piece
         void scrollToBottom()
@@ -149,11 +183,13 @@ async function submit(content: string, pushUser: boolean): Promise<void> {
         assistant.status = 'SUCCESS'
         assistant.model = info.model
         assistant.streaming = false
+        assistant.progress = ''
         void loadSessions()
       },
       onError: (err: StreamError) => {
         assistant.status = 'FAILED'
         assistant.streaming = false
+        assistant.progress = ''
         // 已流出的部分内容保留；失败原因单独成条展示，便于用户判断该重试还是改提问
         assistant.error = err.message
         assistant.canRetry = err.retryable
@@ -250,6 +286,10 @@ function useSuggestion(text: string): void {
               v-html="renderMarkdown(m.content || '')"
             />
             <div v-else class="plain">{{ m.content }}</div>
+            <div v-if="m.progress" class="plan-progress">
+              <span class="spinner" />{{ m.progress }}
+            </div>
+            <PlanCard v-if="m.plan" :plan="m.plan" />
             <span v-if="m.streaming" class="caret" />
             <div v-if="m.model" class="model-tag">{{ m.model }}</div>
             <div v-if="m.error" class="bubble-error">
@@ -498,6 +538,31 @@ function useSuggestion(text: string): void {
 /* 空正文不占位（失败且未产出任何内容时） */
 .markdown-body:empty {
   display: none;
+}
+
+/* 计划生成中的状态提示：真实模型可能十几秒，不能让用户对着空泡等 */
+.plan-progress {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--at-text-secondary);
+}
+
+.spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #dfe3e9;
+  border-top-color: var(--at-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* 失败提示条：与正文区分开，避免用户把错误文案当成回答的一部分 */

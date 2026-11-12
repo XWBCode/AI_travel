@@ -2,6 +2,7 @@ package com.aitravel.modules.chat.controller;
 
 import com.aitravel.common.api.ErrorCode;
 import com.aitravel.common.api.TraceIdHolder;
+import com.aitravel.common.exception.BizException;
 import com.aitravel.common.web.CurrentUser;
 import com.aitravel.common.web.TraceIdFilter;
 import com.aitravel.modules.chat.dto.ChatTurn;
@@ -10,6 +11,9 @@ import com.aitravel.modules.chat.entity.ChatMessage;
 import com.aitravel.modules.chat.entity.ChatSession;
 import com.aitravel.modules.chat.service.AiServiceClient;
 import com.aitravel.modules.chat.service.ChatSessionService;
+import com.aitravel.modules.plan.service.PlanIntentService;
+import com.aitravel.modules.plan.service.PlanService;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -37,11 +41,20 @@ import java.util.concurrent.atomic.AtomicReference;
  * <p>
  * 事件协议（前后端契约）：
  * <pre>
- * event: meta   data: {"sessionId":123,"userMessageId":456}
- * event: delta  data: {"content":"增量文本"}
- * event: done   data: {"messageId":456,"model":"...","latencyMs":123}
- * event: error  data: {"code":50201,"message":"..."}
+ * event: meta          data: {"sessionId":123,"userMessageId":456}
+ * event: intent        data: {"scene":"plan","needPlan":true,"missingFields":[],"followUps":[]}
+ * event: plan_progress data: {"stage":"generating","message":"正在生成计划…"}
+ * event: plan_draft    data: {"plan":{TravelPlan v1}}
+ * event: plan_saved    data: {"planId":"...","version":0}
+ * event: plan_rejected data: {"reason":"SCHEMA_VIOLATION","message":"..."}
+ * event: delta         data: {"content":"增量文本"}
+ * event: done          data: {"messageId":456,"model":"...","latencyMs":123}
+ * event: error         data: {"code":50201,"message":"..."}
  * </pre>
+ * 一轮对话只会走三条路之一：普通闲聊（delta）、计划追问（intent + delta）、
+ * 计划生成（intent → plan_draft → plan_saved）。判定由 {@link PlanIntentService} 负责，
+ * 它失败时无条件降级为普通闲聊。
+ * <p>
  * 与总纲 4.5 一致：流式只负责展示，落库与业务写入由 Java 负责。
  * <p>
  * 执行模型：控制器只做「落用户消息 + 组上下文 + 返回 emitter」，真正的读取与推送在
@@ -56,6 +69,8 @@ public class ChatController {
 
     private final ChatSessionService chatSessionService;
     private final AiServiceClient aiServiceClient;
+    private final PlanService planService;
+    private final PlanIntentService planIntentService;
     private final ObjectMapper objectMapper;
     @Qualifier("aiStreamExecutor")
     private final ExecutorService aiStreamExecutor;
@@ -109,14 +124,14 @@ public class ChatController {
         return emitter;
     }
 
-    /** 在独立线程里跑完一次完整对话，并保证「有始有终」地结账。 */
+    /**
+     * 一轮对话的路由：闲聊 / 追问 / 生成计划，三条路互斥。
+     * <p>
+     * 先发 meta 再判意图，是为了让前端第一时间拿到 sessionId（新会话的标题、
+     * 左侧列表都依赖它），不必等意图判定返回。
+     */
     private void runStream(SseEmitter emitter, Long sessionId, Long userMessageId, Long userId,
                            List<Map<String, String>> turns, String traceId, AtomicBoolean canceled) {
-        StringBuilder buffer = new StringBuilder();
-        long startAt = System.currentTimeMillis();
-        AtomicReference<String> model = new AtomicReference<>("unknown");
-        AtomicBoolean settled = new AtomicBoolean(false);
-
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("sessionId", sessionId);
         meta.put("userMessageId", userMessageId);
@@ -127,6 +142,28 @@ public class ChatController {
             log.warn("SSE meta 发送失败，放弃本次生成 sessionId={}: {}", sessionId, e.getMessage());
             canceled.set(true);
         }
+        if (canceled.get()) {
+            return;
+        }
+
+        // 意图预判：返回 null 表示闲聊或预判不可用，一律走原链路
+        PlanIntentService.PlanIntent intent = planIntentService.judge(turns, traceId);
+        if (intent == null) {
+            runChat(emitter, sessionId, userId, turns, traceId, canceled);
+        } else if (!intent.needPlan()) {
+            runFollowUp(emitter, sessionId, userId, intent, canceled);
+        } else {
+            runPlan(emitter, sessionId, userMessageId, userId, turns, traceId, intent, canceled);
+        }
+    }
+
+    /** 普通对话：原链路保持原样，计划分支不得改变它的任何行为。 */
+    private void runChat(SseEmitter emitter, Long sessionId, Long userId,
+                         List<Map<String, String>> turns, String traceId, AtomicBoolean canceled) {
+        StringBuilder buffer = new StringBuilder();
+        long startAt = System.currentTimeMillis();
+        AtomicReference<String> model = new AtomicReference<>("unknown");
+        AtomicBoolean settled = new AtomicBoolean(false);
 
         if (!canceled.get()) {
             aiServiceClient.streamChat(turns, traceId,
@@ -190,6 +227,149 @@ public class ChatController {
             } else {
                 completeWithError(emitter, ErrorCode.AI_SERVICE_UNAVAILABLE.getCode(), reason);
             }
+        }
+    }
+
+    /**
+     * 计划意图但槽位不足：把追问话术当助手回复下发并落库。
+     * <p>
+     * 这里刻意不调用模型：要问什么由规则确定（只问 destination / days 两项），
+     * 让模型润色只会引入不确定性，还可能出现「一边追问一边自作主张先排一版行程」。
+     */
+    private void runFollowUp(SseEmitter emitter, Long sessionId, Long userId,
+                             PlanIntentService.PlanIntent intent, AtomicBoolean canceled) {
+        long startAt = System.currentTimeMillis();
+
+        Map<String, Object> event = new LinkedHashMap<>();
+        event.put("scene", "plan");
+        event.put("needPlan", false);
+        event.put("missingFields", intent.missingFields());
+        event.put("followUps", intent.questions());
+        sendSafe(emitter, "intent", event);
+
+        String text = planIntentService.buildFollowUpText(intent);
+        if (!canceled.get()) {
+            sendSafe(emitter, "delta", Map.of("content", text));
+        }
+
+        long latency = System.currentTimeMillis() - startAt;
+        ChatMessage saved = chatSessionService.saveAssistantMessage(
+                sessionId, userId, text, "plan-assistant", latency, "SUCCESS", null);
+
+        Map<String, Object> done = new LinkedHashMap<>();
+        done.put("messageId", saved.getId());
+        done.put("model", "plan-assistant");
+        done.put("latencyMs", latency);
+        sendSafe(emitter, "done", done);
+        emitter.complete();
+    }
+
+    /**
+     * 计划意图且槽位足够：生成 → 校验 → 落库 → 下发计划事件。
+     * <p>
+     * 复用 {@link PlanService#generate}：它已经是「生成→校验→事务落库→留痕」的完整单元，
+     * 本方法只负责转发事件和落一条聊天消息。在这里重写校验等于让两套规则漂移。
+     */
+    private void runPlan(SseEmitter emitter, Long sessionId, Long userMessageId, Long userId,
+                         List<Map<String, String>> turns, String traceId,
+                         PlanIntentService.PlanIntent intent, AtomicBoolean canceled) {
+        long startAt = System.currentTimeMillis();
+
+        Map<String, Object> event = new LinkedHashMap<>();
+        event.put("scene", "plan");
+        event.put("needPlan", true);
+        event.put("missingFields", intent.missingFields());
+        event.put("followUps", List.of());
+        sendSafe(emitter, "intent", event);
+
+        // 真实模型可能要十几秒，先给前端一个明确状态，避免聊天框长时间空白
+        sendSafe(emitter, "plan_progress",
+                Map.of("stage", "generating", "message", "正在生成计划…"));
+
+        try {
+            JsonNode plan = planService.generate(userId, turns, sessionId, userMessageId);
+            if (canceled.get()) {
+                return;
+            }
+
+            sendSafe(emitter, "plan_draft", Map.of("plan", plan));
+
+            Map<String, Object> saved = new LinkedHashMap<>();
+            saved.put("planId", plan.path("planId").asText());
+            saved.put("version", plan.path("version").asInt(0));
+            sendSafe(emitter, "plan_saved", saved);
+
+            // 摘要同时下发：卡片是结构化数据，但用户第一眼需要一句人话，
+            // 且刷新后卡片不在、这句话还在（它已随消息落库）
+            String summary = summarizePlan(plan);
+            sendSafe(emitter, "delta", Map.of("content", summary));
+
+            long latency = System.currentTimeMillis() - startAt;
+            ChatMessage message = chatSessionService.saveAssistantMessage(
+                    sessionId, userId, summary, "plan-assistant", latency, "SUCCESS", null);
+
+            Map<String, Object> done = new LinkedHashMap<>();
+            done.put("messageId", message.getId());
+            done.put("model", "plan-assistant");
+            done.put("latencyMs", latency);
+            sendSafe(emitter, "done", done);
+            emitter.complete();
+        } catch (BizException e) {
+            // 校验不过 / 信息不足：业务表已保证 0 条（AC-07），这里只负责把原因说清楚
+            long latency = System.currentTimeMillis() - startAt;
+            String message = e.getMessage() == null ? "计划生成失败" : e.getMessage();
+            String reason = message.contains("信息不足") ? "NEED_MORE_INFO" : "SCHEMA_VIOLATION";
+
+            Map<String, Object> rejected = new LinkedHashMap<>();
+            rejected.put("reason", reason);
+            rejected.put("message", message);
+            sendSafe(emitter, "plan_rejected", rejected);
+
+            chatSessionService.saveAssistantMessage(
+                    sessionId, userId, "", "plan-assistant", latency, "FAILED", message);
+            completeWithError(emitter, ErrorCode.AI_SERVICE_UNAVAILABLE.getCode(), message);
+            log.warn("计划生成被拒 sessionId={} reason={} msg={}", sessionId, reason, message);
+        }
+    }
+
+    /**
+     * 生成一条能留在会话历史里的摘要。
+     * <p>
+     * 卡片是流里的事件，刷新页面就没了；文字摘要会随消息落库，保证历史可读。
+     */
+    private String summarizePlan(JsonNode plan) {
+        JsonNode basic = plan.path("basic");
+        String title = plan.path("title").asText("旅行计划");
+        String destination = basic.path("destination").asText("");
+        int days = basic.path("days").asInt(0);
+        int travelers = basic.path("travelers").asInt(0);
+        int unverified = plan.path("unverifiedFieldCount").asInt(0);
+
+        StringBuilder sb = new StringBuilder("已生成《").append(title).append("》");
+        if (!destination.isBlank()) {
+            sb.append("：").append(destination);
+        }
+        if (days > 0) {
+            sb.append("，").append(days).append(" 天");
+        }
+        if (travelers > 0) {
+            sb.append("，").append(travelers).append(" 人");
+        }
+        sb.append("。\n\n");
+        if (unverified > 0) {
+            sb.append("其中 ").append(unverified)
+                    .append(" 个字段标记为「待核实」——当前未接入实时天气/票价/路况，相关数值请以实际为准。\n\n");
+        }
+        sb.append("计划已保存，点开卡片可查看每日安排；确认无误后再开始行程。");
+        return sb.toString();
+    }
+
+    /** 推送失败只说明客户端已断开，不属于业务错误，不让异常冒到上层。 */
+    private void sendSafe(SseEmitter emitter, String name, Map<String, Object> data) {
+        try {
+            send(emitter, name, data);
+        } catch (Exception e) {
+            log.debug("推送 {} 失败，客户端可能已断开", name);
         }
     }
 

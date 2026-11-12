@@ -98,6 +98,42 @@ def test_intent_origin():
     assert intent.slots["days"] == 5
 
 
+def test_intent_colloquial_plan_request():
+    """口语说法不能把意图词、量词当成城市名。
+
+    这批用例对应真实用户在聊天框里的写法。规则版最容易在这里出错：
+    「帮我规划成都」里的「帮我规划」曾被整体当成城市，导致 needPlan 永远为 false。
+    """
+    cases = [
+        ("帮我规划成都三天，2个人，预算5000", "成都", 3),
+        ("成都三日游", "成都", 3),
+        ("帮我规划一下成都的行程", "成都", None),
+        ("成都玩三天", "成都", 3),
+        ("给我一份成都三日游攻略", "成都", 3),
+        ("从上海去成都玩4天", "成都", 4),
+        ("来个成都的攻略", "成都", None),
+    ]
+    for text, city, days in cases:
+        intent = analyze(text)
+        assert intent.slots["destination"] == city, f"{text} -> {intent.slots['destination']}"
+        assert intent.slots["days"] == days, f"{text} -> days={intent.slots['days']}"
+
+
+def test_intent_does_not_invent_city():
+    """不含地名的说法不能抽出伪城市（「出去转转」的「去」不是方向词）"""
+    intent = analyze("下周想出去转转")
+    assert intent.slots["destination"] is None
+    assert intent.need_plan is False
+
+
+def test_intent_need_plan_requires_city_and_days():
+    """生成计划的最低条件：知道去哪 + 知道几天；缺一个就应追问而不是硬生成"""
+    assert analyze("帮我规划成都三天").need_plan is True
+    assert analyze("我想去成都").need_plan is False
+    assert analyze("帮我规划三天").need_plan is False
+    assert analyze("帮我规划三天").follow_ups == ["destination"]
+
+
 # ---------------- Mock 生成 ----------------
 
 def test_mock_plan_is_valid():

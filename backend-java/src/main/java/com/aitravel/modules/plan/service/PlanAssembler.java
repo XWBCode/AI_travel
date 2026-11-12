@@ -53,7 +53,9 @@ public class PlanAssembler {
     public ObjectNode assemble(TravelPlan plan) {
         ObjectNode root = objectMapper.createObjectNode();
         root.put("schemaVersion", SCHEMA_VERSION);
-        root.put("planId", plan.getId());
+        // 必须用字符串：雪花 ID 超出 JS 安全整数，JsonNode 里的 LongNode 不会走全局的
+        // Long→String 序列化器，直接写数字会让前端 JSON.parse 丢精度（f7399af 同类问题）
+        root.put("planId", String.valueOf(plan.getId()));
         root.put("title", plan.getTitle());
         root.put("status", plan.getStatus());
         root.put("version", plan.getVersion() == null ? 0 : plan.getVersion());

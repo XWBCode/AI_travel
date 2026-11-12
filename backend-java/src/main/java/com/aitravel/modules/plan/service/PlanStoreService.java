@@ -65,10 +65,23 @@ public class PlanStoreService {
      */
     @Transactional
     public Long createFromDraft(Long userId, JsonNode draftNode, PlanDraftDto dto) {
+        return createFromDraft(userId, draftNode, dto, null, null);
+    }
+
+    /**
+     * 事务落库，并记录来源会话。
+     * <p>
+     * 会话与消息均可空：`/api/plans/generate` 仍允许脱离对话直接生成。
+     */
+    @Transactional
+    public Long createFromDraft(Long userId, JsonNode draftNode, PlanDraftDto dto,
+                                Long sessionId, Long sourceMessageId) {
         PlanDraftDto.Basic basic = dto.getBasic();
 
         TravelPlan plan = new TravelPlan();
         plan.setUserId(userId);
+        plan.setSessionId(sessionId);
+        plan.setSourceMessageId(sourceMessageId);
         plan.setTitle(dto.getTitle());
         plan.setStatus(PlanStatus.DRAFT.name());
         plan.setOriginCity(basic.getOriginCity());

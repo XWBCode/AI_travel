@@ -63,6 +63,18 @@ _CITY_STOPWORDS = {
 
 _CITY = r"[\u4e00-\u9fa5]{2,8}"
 
+# 「帮我规划一下成都三天」这类口语前缀。不剥掉的话，"帮我规划成都" 整段会被当成城市名。
+# 规则版只覆盖高频说法；P3 换成模型判定后由模型直接输出槽位。
+_INTENT_PREFIX = re.compile(
+    r"^(?:请|帮我|帮忙|麻烦你?|我希望|我想|我们想|想要|打算|计划|准备|能不能|可以|给我|来(?:个|一份|一趟|次)?)\s*"
+)
+_ACTION_PREFIX = re.compile(
+    r"^(?:规划|安排|设计|定制|计划|做个|做一份|搞个|来个|整个|排个)\s*(?:一下|个|一份|一个|一趟)?\s*"
+)
+_DIRECTION_PREFIX = re.compile(r"^(?:出发去|去|到|至|飞往|前往)\s*")
+# 「从上海去成都」：出发地整段是修饰，剥掉后剩下的才是目的地
+_ORIGIN_PREFIX = re.compile(r"^从[^，,。；;、\s]{2,8}?(?:出发)?(?:去|到|至|飞往|前往)\s*")
+
 
 def _cn_to_int(text: str) -> int | None:
     """把 一~九十九 的中文数字转成整数；无法解析返回 None。"""
@@ -90,6 +102,8 @@ def _clean_city(value: str) -> str | None:
     """清洗抽到的城市名：去掉语气词与动词尾巴，过滤停用词。"""
     if not value:
         return None
+    # 量词前缀：「给我一份成都三日游」剥掉「给我」后还剩「一份成都」
+    value = re.sub(r"^(?:一份|一个|一张|一趟|一次|个|份)\s*", "", value.strip())
     value = re.sub(r"(玩|旅游|旅行|出差|度假|逛|待着|呆着|的|了|吧|呢|呀|啊|一下|几天)+$", "", value.strip())
     value = value.strip(" ，,。.、！!？?")
     if not value or value in _CITY_STOPWORDS or len(value) < 2:
@@ -110,6 +124,23 @@ def _split_cities(text: str) -> list[str]:
     return cities[:10]
 
 
+def _strip_intent_prefix(text: str) -> str:
+    """剥掉「帮我规划一下…」这类纯意图前缀，只留下「城市 + 修饰」 。
+
+    反复剥离直到稳定：「帮我规划去成都」需要连剥三层（帮我 → 规划 → 去）。
+    """
+    current = (text or "").strip()
+    for _ in range(4):
+        before = current
+        current = _INTENT_PREFIX.sub("", current)
+        current = _ORIGIN_PREFIX.sub("", current)
+        current = _ACTION_PREFIX.sub("", current)
+        current = _DIRECTION_PREFIX.sub("", current)
+        if current == before:
+            break
+    return current.strip()
+
+
 def _extract_destinations(text: str) -> list[str]:
     """抽目的地。
 
@@ -117,13 +148,36 @@ def _extract_destinations(text: str) -> list[str]:
     用 lookahead 卡住常见动词与标点，non-greedy 保证取最短命中。
     不在这里处理「从X去Y」——出发地由 _extract_origin 单独抽，否则「我想去成都」
     里的「我想」会被当成城市。
+
+    分两轮：
+    1. 先剥掉口语前缀，在「成都三天」「成都玩三天」「成都的行程」这类结构上匹配；
+    2. 再退回原文，用显式方向词（去/到/飞往）与「N日游」兜底。
+    第二轮必须用原文：剥完前缀后方向词已经没了，只靠第一轮会漏「我想去成都」。
     """
+    stripped = _strip_intent_prefix(text)
+
+    # 第一轮：仅在剥过前缀的文本上匹配，避免「帮我规划成都」被整体当城市
+    primary = [
+        # 成都三天 / 成都玩三天 / 成都 3 日
+        rf"({_CITY}?)\s*(?:玩|旅游|旅行|逛|待|呆|游)?\s*(?=(?:[0-9]{{1,2}}|[一二三四五六七八九十两]{{1,3}})\s*[天日])",
+        # 成都的行程 / 成都路线 / 成都攻略
+        rf"({_CITY}?)\s*的?\s*(?:行程|路线|攻略|旅游|旅行|之旅)",
+    ]
+    for pattern in primary:
+        match = re.search(pattern, stripped)
+        if match:
+            cities = _split_cities(match.group(1))
+            if cities:
+                return cities
+
+    # 第二轮：回退到原文，按显式结构抽
     suffix = r"(?=玩|旅游|旅行|出差|度假|待|呆|逛|度|，|,|。|！|!|？|\?|\s|$)"
-    patterns = [
-        rf"(?:去|到|至|飞往|前往)\s*({_CITY}?){suffix}",
+    fallback = [
+        # 「出去转转」里的「去」不是方向词，用负向断言排掉，否则会抽出「转转」这种伪城市
+        rf"(?<![出进回上下过])(?:去|到|至|飞往|前往)\s*({_CITY}?){suffix}",
         rf"({_CITY}?)\s*(?:[0-9]{{1,2}}|[一二三四五六七八九十两]{{1,3}})\s*[日天]游",
     ]
-    for pattern in patterns:
+    for pattern in fallback:
         match = re.search(pattern, text)
         if not match:
             continue
@@ -197,7 +251,8 @@ def _extract_dates(text: str, today: date) -> tuple[str | None, str | None, str]
 
 def _extract_days(text: str) -> int | None:
     """抽天数。负向后顾排除「11月20日」这类日期里的数字。"""
-    match = re.search(r"(?<![0-9月])([0-9]{1,2}|[一二三四五六七八九十两]{1,3})\s*[天日](?!游)", text)
+    # 「三日游 / 五天行程」同样是天数，不能再把「日游」排除掉
+    match = re.search(r"(?<![0-9月])([0-9]{1,2}|[一二三四五六七八九十两]{1,3})\s*[天日]", text)
     if not match:
         return None
     return _cn_to_int(match.group(1))

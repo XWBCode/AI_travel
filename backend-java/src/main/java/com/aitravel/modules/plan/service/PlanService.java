@@ -48,6 +48,17 @@ public class PlanService {
      * 校验失败时<b>不落业务表</b>，只写 {@code t_ai_generation_log}（AC-07）。
      */
     public JsonNode generate(Long userId, List<Map<String, String>> messages) {
+        return generate(userId, messages, null, null);
+    }
+
+    /**
+     * 生成计划并记录来源会话。
+     *
+     * @param sessionId       来源会话，脱离对话生成时为 null
+     * @param sourceMessageId 触发本次生成的用户消息
+     */
+    public JsonNode generate(Long userId, List<Map<String, String>> messages,
+                             Long sessionId, Long sourceMessageId) {
         String traceId = TraceIdHolder.get();
         long startedAt = System.currentTimeMillis();
 
@@ -85,7 +96,7 @@ public class PlanService {
         // 不采信模型自报的数量，一律以递归重算为准（S-5 已比对，这里是写入值的来源）
         dto.setUnverifiedFieldCount(validator.countUnverifiedFactFields(draft));
 
-        Long planId = store.createFromDraft(userId, draft, dto);
+        Long planId = store.createFromDraft(userId, draft, dto, sessionId, sourceMessageId);
         logWriter.write(userId, planId, traceId, provider, model, rawResponse, true, null,
                 elapsed(startedAt));
         return detail(planId, userId);

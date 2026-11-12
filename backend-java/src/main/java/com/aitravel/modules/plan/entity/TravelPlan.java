@@ -25,6 +25,12 @@ public class TravelPlan extends BaseEntity {
 
     private Long userId;
 
+    /** V4：来源会话 ID；脱离会话直接生成时为 null */
+    private Long sessionId;
+
+    /** V4：触发本次生成的用户消息 ID，用于「这个计划是哪句话生成的」追溯 */
+    private Long sourceMessageId;
+
     private String title;
 
     /** DRAFT / CONFIRMED / IN_PROGRESS / COMPLETED / CANCELLED */

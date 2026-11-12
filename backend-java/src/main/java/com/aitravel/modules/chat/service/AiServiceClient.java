@@ -163,6 +163,52 @@ public class AiServiceClient {
         }
     }
 
+    /**
+     * 只判意图，不生成计划（Python 侧是规则判定，不调模型，毫秒级）。
+     * <p>
+     * <b>失败不抛异常，返回 {@code null}</b>：这是一次「决策前的预判」，它挂了
+     * 不该让整轮对话失败。调用方拿到 null 时按普通闲聊处理，并已在日志里留痕。
+     * 超时给 5 秒也是同一考虑——预判慢到 5 秒，说明服务有问题，宁可降级。
+     *
+     * @return {@code data} 节点：{@code scene / needPlan / missingFields / slots / followUps}；
+     *         服务不可用或返回异常时为 {@code null}
+     */
+    public JsonNode analyzeIntent(List<Map<String, String>> turns, String traceId) {
+        String json;
+        try {
+            json = objectMapper.writeValueAsString(Map.of("messages", turns));
+        } catch (Exception e) {
+            log.warn("意图请求序列化失败，本次按普通对话处理: {}", e.getMessage());
+            return null;
+        }
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/plan/intent"))
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json")
+                .header("X-Trace-Id", traceId == null ? "" : traceId)
+                .timeout(Duration.ofSeconds(5))
+                .POST(HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8))
+                .build();
+
+        try {
+            HttpResponse<String> response = httpClient.send(request,
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (response.statusCode() != 200) {
+                log.warn("意图判定返回状态码 {}，本次按普通对话处理", response.statusCode());
+                return null;
+            }
+            JsonNode root = objectMapper.readTree(response.body());
+            return root.path("data");
+        } catch (IOException e) {
+            log.warn("意图判定调用失败，本次按普通对话处理: {}", e.getMessage());
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        }
+    }
+
     /** 读取对端错误响应体（限量），失败时返回空串，不影响主流程。 */
     private static String readBodySafely(InputStream in) {
         try (InputStream body = in) {

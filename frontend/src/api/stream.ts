@@ -1,14 +1,35 @@
 import { getToken } from '@/api/http'
-import type { Id } from '@/api/types'
+import type { Id, TravelPlan } from '@/api/types'
 import { toStreamError, type StreamError } from './stream-error'
 
 export type { StreamError } from './stream-error'
 
+/**
+ * 后端在生成计划前下发的意图判定（05 文档 §4）。
+ * `followUps` 已经是中文问句，可直接渲染成快捷回复。
+ */
+export interface PlanIntentPayload {
+  scene: string
+  needPlan: boolean
+  missingFields: string[]
+  followUps: string[]
+}
+
 export interface StreamHandlers {
   /** 会话建立后立即回调，用于拿到 sessionId */
   onMeta?: (meta: { sessionId: Id; userMessageId: Id }) => void
+  /** 意图判定结果：决定这一轮是「追问」还是「生成计划」 */
+  onIntent?: (intent: PlanIntentPayload) => void
+  /** 计划生成中的阶段提示（真实模型耗时长，避免聊天框空白） */
+  onPlanProgress?: (info: { stage: string; message: string }) => void
+  /** 已通过契约校验的计划草稿 */
+  onPlanDraft?: (plan: TravelPlan) => void
+  /** 落库成功，携带可用于跳转详情的 planId */
+  onPlanSaved?: (info: { planId: Id; version: number }) => void
+  /** 生成被拒（校验不过 / 信息不足）。紧跟其后还会有 error 事件负责收尾 */
+  onPlanRejected?: (info: { reason: string; message: string }) => void
   onDelta: (content: string) => void
-  onDone?: (info: { messageId: number; model: string; latencyMs: number }) => void
+  onDone?: (info: { messageId: Id; model: string; latencyMs: number }) => void
   onError?: (error: StreamError) => void
   onFinish?: () => void
 }
@@ -108,6 +129,40 @@ function dispatch(chunk: string, handlers: StreamHandlers): void {
     case 'meta':
       handlers.onMeta?.(payload as never)
       break
+    case 'intent':
+      handlers.onIntent?.({
+        scene: String(payload.scene ?? ''),
+        needPlan: Boolean(payload.needPlan),
+        missingFields: toStringArray(payload.missingFields),
+        followUps: toStringArray(payload.followUps),
+      })
+      break
+    case 'plan_progress':
+      handlers.onPlanProgress?.({
+        stage: String(payload.stage ?? ''),
+        message: String(payload.message ?? '正在生成计划…'),
+      })
+      break
+    case 'plan_draft':
+      // 计划体较大且结构固定，交给调用方按 TravelPlan 使用；
+      // 这里不做字段兜底，避免把「后端少给字段」掩盖成前端的默认值
+      if (payload.plan) {
+        handlers.onPlanDraft?.(payload.plan as never)
+      }
+      break
+    case 'plan_saved':
+      handlers.onPlanSaved?.({
+        // 后端已保证以字符串下发（雪花 ID 超出 JS 安全整数）
+        planId: String(payload.planId ?? ''),
+        version: Number(payload.version ?? 0),
+      })
+      break
+    case 'plan_rejected':
+      handlers.onPlanRejected?.({
+        reason: String(payload.reason ?? ''),
+        message: String(payload.message ?? '计划生成失败'),
+      })
+      break
     case 'delta':
       handlers.onDelta(String(payload.content ?? ''))
       break
@@ -122,6 +177,11 @@ function dispatch(chunk: string, handlers: StreamHandlers): void {
       })
       break
     default:
+      // 未知事件直接忽略：新增事件不应让旧前端崩掉
       break
   }
+}
+
+function toStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
 }

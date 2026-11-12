@@ -48,3 +48,82 @@ export interface MessageVO {
   model?: string
   createTime: string
 }
+
+/* ---------------- 旅行计划（contracts/travel-plan/travel_plan_v1.json） ---------------- */
+
+/**
+ * 事实字段。L0（未接入实时数据源）下 value 恒为 null、display 恒为「待核实」，
+ * 展示层只能用它，不能自己去算数值——否则就是编造（AC-08）。
+ */
+export interface FactField {
+  value?: unknown
+  display: string
+  note?: string
+  source?: string
+  verified: boolean
+}
+
+export interface PlanItem {
+  itemOrder: number
+  title: string
+  startTime?: string
+  endTime?: string
+  duration?: FactField
+  openHours?: FactField
+  ticketPrice?: FactField
+  note?: string
+}
+
+export interface PlanDay {
+  dayIndex: number
+  date?: string | null
+  city?: string
+  theme?: string
+  items?: PlanItem[]
+}
+
+export interface BudgetItem {
+  category: string
+  label: string
+  amount?: FactField
+  note?: string
+}
+
+export interface TravelPlanBasic {
+  originCity?: string | null
+  destination?: string | null
+  destinations?: string[]
+  startDate?: string | null
+  endDate?: string | null
+  days?: number | null
+  travelers?: number | null
+  missingFields?: string[]
+}
+
+export interface TravelPlan {
+  schemaVersion: string
+  planId: Id
+  title: string
+  status: string
+  version: number
+  basic: TravelPlanBasic
+  budget?: { note?: string; items?: BudgetItem[] }
+  risks?: string[]
+  aiNote?: string
+  unverifiedFieldCount: number
+  days?: PlanDay[]
+}
+
+export interface PlanSummaryVO {
+  id: Id
+  title: string
+  destination?: string
+  status: string
+  startDate?: string
+  endDate?: string
+  days?: number
+  travelers?: number
+  unverifiedFieldCount: number
+  version: number
+  updateTime: string
+}
