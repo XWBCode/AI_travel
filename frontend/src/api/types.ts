@@ -179,3 +179,42 @@ export const PLAN_ACTIONS: Record<string, Array<'confirm' | 'start' | 'complete'
   COMPLETED: [],
   CANCELLED: [],
 }
+
+/**
+ * 执行进度（M2）。
+ *
+ * 不复用 TravelPlan：打一次勾不该把预算、跨城段、风险整份重传。
+ * itemId 是字符串——雪花 ID 超出 JS 安全整数，用 number 会丢精度，
+ * 表现为「点第 3 项却勾上了第 4 项」这种极难排查的错。
+ */
+export interface PlanProgressVO {
+  planId: Id
+  status: string
+  total: number
+  completed: number
+  /** 0-100 整数，服务端算好，前后端不各算一遍 */
+  percent: number
+  days: ProgressDay[]
+}
+
+export interface ProgressDay {
+  dayIndex: number
+  date?: string | null
+  city?: string
+  total: number
+  completed: number
+  items: ProgressItem[]
+}
+
+export interface ProgressItem {
+  itemId: Id
+  itemOrder: number
+  title: string
+  startTime?: string
+  endTime?: string
+  note?: string
+  completed: boolean
+  completedAt?: string
+  /** 下一个待完成项，全表只有一个 */
+  next: boolean
+}

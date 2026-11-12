@@ -7,7 +7,10 @@ import {
   PLAN_ACTIONS,
   PLAN_STATUS_TEXT,
   type PlanDay,
+  type PlanItem,
+  type PlanProgressVO,
   type PlanVersionVO,
+  type ProgressItem,
   type TravelPlan,
 } from '@/api/types'
 import FactBadge from '@/components/FactBadge.vue'
@@ -25,6 +28,10 @@ const router = useRouter()
 
 const plan = ref<TravelPlan | null>(null)
 const versions = ref<PlanVersionVO[]>([])
+/** 执行进度：只有「进行中」才会出现勾选框，其余状态仅展示汇总 */
+const progress = ref<PlanProgressVO | null>(null)
+/** 正在提交的行程项 key，避免连点重复请求（后端本身幂等，前端也别制造无用请求） */
+const marking = ref<string | null>(null)
 const loading = ref(false)
 const acting = ref(false)
 const editing = ref(false)
@@ -56,12 +63,55 @@ async function load(): Promise<void> {
   loading.value = true
   try {
     plan.value = await plansApi.detail(planId.value)
-    // 版本列表失败不该拖垮整页：它只是补充信息
+    // 版本列表与进度都是补充信息，失败不该拖垮整页
     versions.value = await plansApi.versions(planId.value).catch(() => [])
+    progress.value = await plansApi.progress(planId.value).catch(() => null)
   } catch {
     plan.value = null
   } finally {
     loading.value = false
+  }
+}
+
+/** 只有进行中能打勾；已完成看汇总，草稿/已确认还没出发 */
+const canTrack = computed(() => status.value === 'IN_PROGRESS')
+
+const progressSummary = computed(() => {
+  const p = progress.value
+  if (!p || p.total === 0) return null
+  return { done: p.completed, total: p.total, percent: p.percent }
+})
+
+/**
+ * 行程项与进度项的对应关系。
+ * 计划详情里不带 itemId（契约冻结的形态里没有这个字段），
+ * 所以用「第几天 + 日内序号」对齐——这两个值在一天内唯一。
+ */
+const progressIndex = computed(() => {
+  const map = new Map<string, ProgressItem>()
+  for (const day of progress.value?.days ?? []) {
+    for (const item of day.items ?? []) {
+      map.set(`${day.dayIndex}#${item.itemOrder}`, item)
+    }
+  }
+  return map
+})
+
+function progressOf(day: PlanDay, item: PlanItem): ProgressItem | undefined {
+  return progressIndex.value.get(`${day.dayIndex}#${item.itemOrder}`)
+}
+
+async function toggleItem(day: PlanDay, item: PlanItem): Promise<void> {
+  const row = progressOf(day, item)
+  if (!row || !plan.value || marking.value) return
+  const key = `${day.dayIndex}#${item.itemOrder}`
+  marking.value = key
+  try {
+    progress.value = await plansApi.markProgress(plan.value.planId, row.itemId, !row.completed)
+  } catch {
+    // 状态机的拒绝（如行程已完成）由拦截器提示，这里不再弹第二个框
+  } finally {
+    marking.value = null
   }
 }
 
@@ -198,6 +248,28 @@ onMounted(load)
           <span class="missing-hint">补充后行程会更贴合实际情况（在对话里说一句就行）</span>
         </div>
 
+        <!-- 执行进度：进行中才可勾选，已完成只读。草稿/已确认还没出发，不占版面 -->
+        <div
+          v-if="progressSummary && (status === 'IN_PROGRESS' || status === 'COMPLETED')"
+          class="track"
+        >
+          <div class="track-head">
+            <span class="track-title">执行进度</span>
+            <span class="track-count">
+              {{ progressSummary.done }} / {{ progressSummary.total }} 项
+            </span>
+            <span v-if="progressSummary.percent === 100" class="track-all">
+              全部完成，可以继续下一步了
+            </span>
+          </div>
+          <el-progress
+            :percentage="progressSummary.percent"
+            :stroke-width="8"
+            :show-text="false"
+            :color="progressSummary.percent === 100 ? '#12b76a' : '#2f6fed'"
+          />
+        </div>
+
         <section class="block">
           <h2>每日安排</h2>
           <div v-for="day in plan.days ?? []" :key="day.dayIndex" class="day">
@@ -208,7 +280,25 @@ onMounted(load)
             </div>
 
             <ul v-if="day.items?.length" class="items">
-              <li v-for="(item, i) in day.items ?? []" :key="`${day.dayIndex}-${i}`" class="item">
+              <li
+                v-for="(item, i) in day.items ?? []"
+                :key="`${day.dayIndex}-${i}`"
+                class="item"
+                :class="{
+                  done: progressOf(day, item)?.completed,
+                  next: canTrack && progressOf(day, item)?.next,
+                  clickable: canTrack && progressOf(day, item),
+                }"
+                @click="canTrack && toggleItem(day, item)"
+              >
+                <!-- 勾选框只负责显示，点击交给整行：14px 的方块在手机上几乎点不中 -->
+                <div v-if="canTrack" class="item-check">
+                  <el-checkbox
+                    v-if="progressOf(day, item)"
+                    :model-value="progressOf(day, item)?.completed"
+                    :disabled="marking === `${day.dayIndex}#${item.itemOrder}`"
+                  />
+                </div>
                 <div class="item-time">
                   <span>{{ item.startTime || '—' }}</span>
                   <span v-if="item.endTime" class="end">{{ item.endTime }}</span>
@@ -487,6 +577,87 @@ onMounted(load)
   display: flex;
   gap: 14px;
   padding: 10px 0;
+}
+
+/* 勾选区固定宽度，勾上/不勾都不会让时间列左右跳动 */
+.item-check {
+  display: flex;
+  align-items: flex-start;
+  padding-top: 1px;
+  /* 点击一律由整行处理，避免「点了勾选框却没反应」 */
+  pointer-events: none;
+}
+
+.item-check :deep(.el-checkbox) {
+  height: auto;
+  margin-right: 0;
+}
+
+.item.clickable {
+  cursor: pointer;
+}
+
+.item.clickable:hover {
+  background: #fafbfc;
+}
+
+/* 已完成：整条降饱和并加删除线，扫一眼就知道哪些没做 */
+.item.done .item-title {
+  color: #a8b1bd;
+  text-decoration: line-through;
+}
+
+.item.done .item-time,
+.item.done .item-facts,
+.item.done .item-note {
+  opacity: 0.55;
+}
+
+/* 下一项：左侧色条提示「该做这个了」，比单独一句文案更好扫 */
+.item.next {
+  position: relative;
+}
+
+.item.next::before {
+  content: '';
+  position: absolute;
+  left: -12px;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--at-primary);
+}
+
+.track {
+  margin-top: 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--at-border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.track-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 9px;
+  font-size: 13px;
+}
+
+.track-title {
+  font-weight: 600;
+  color: var(--at-text-primary);
+}
+
+.track-count {
+  color: var(--at-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.track-all {
+  color: #12b76a;
+  font-size: 12px;
 }
 
 .item + .item {

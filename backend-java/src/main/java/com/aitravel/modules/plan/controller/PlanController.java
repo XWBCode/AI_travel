@@ -3,12 +3,15 @@ package com.aitravel.modules.plan.controller;
 import com.aitravel.common.api.PageResult;
 import com.aitravel.common.api.Result;
 import com.aitravel.common.web.CurrentUser;
+import com.aitravel.modules.plan.dto.PlanProgressVO;
 import com.aitravel.modules.plan.dto.PlanSummaryVO;
+import com.aitravel.modules.plan.service.PlanProgressService;
 import com.aitravel.modules.plan.service.PlanService;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
@@ -28,8 +31,8 @@ import java.util.Map;
 /**
  * 计划接口（05 §5）。
  * <p>
- * M1 范围：生成、列表、详情、编辑草稿、确认与状态迁移、版本列表。
- * 未实现（已写入开发计划，不得声称已完成）：行程条目增删、执行进度、调整建议、通知、版本回滚。
+ * 已实现：生成、列表、详情、编辑草稿、确认与状态迁移、版本列表、执行进度（M2）。
+ * 未实现（已写入开发计划，不得声称已完成）：行程条目增删、调整建议、通知、版本回滚。
  * <p>
  * 权限一律由 {@link CurrentUser} + Service 层的归属校验保证；控制器不接收 userId 参数，
  * 避免越权（AC-14）。
@@ -40,6 +43,7 @@ import java.util.Map;
 public class PlanController {
 
     private final PlanService planService;
+    private final PlanProgressService progressService;
 
     /** 触发生成；返回落库后的计划详情（stored 模型） */
     @PostMapping("/generate")
@@ -104,6 +108,38 @@ public class PlanController {
     @GetMapping("/{id}/versions")
     public Result<List<PlanService.VersionVO>> versions(@PathVariable Long id) {
         return Result.ok(planService.versions(id, CurrentUser.requireUserId()));
+    }
+
+    /**
+     * 执行进度（M2）。任何状态都可读：草稿阶段返回全 0，前端据此决定是否渲染勾选框。
+     */
+    @GetMapping("/{id}/progress")
+    public Result<PlanProgressVO> progress(@PathVariable Long id) {
+        return Result.ok(progressService.progress(id, CurrentUser.requireUserId()));
+    }
+
+    /**
+     * 勾选 / 取消勾选行程项，返回最新进度。
+     * <p>
+     * 幂等：同一项重复勾选不报错、不产生重复记录（05 §5「幂等」）。取消勾选用
+     * {@code completed=false} 而不是单独的 DELETE——前端只需要一个「切换」动作，
+     * 多一个接口就多一处状态不一致的机会。
+     */
+    @PostMapping("/{id}/progress")
+    public Result<PlanProgressVO> markProgress(@PathVariable Long id,
+                                               @Valid @RequestBody ProgressRequest req) {
+        return Result.ok(progressService.mark(id, CurrentUser.requireUserId(),
+                req.getItemId(), req.getCompleted() == null || req.getCompleted()));
+    }
+
+    @Data
+    public static class ProgressRequest {
+
+        @NotNull(message = "itemId 不能为空")
+        private Long itemId;
+
+        /** 缺省 true；传 false 表示取消勾选 */
+        private Boolean completed;
     }
 
     @Data

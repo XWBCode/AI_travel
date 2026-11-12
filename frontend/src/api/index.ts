@@ -5,6 +5,7 @@ import type {
   LoginResponse,
   MessageVO,
   PageResult,
+  PlanProgressVO,
   PlanSummaryVO,
   PlanUpdatePayload,
   PlanVersionVO,
@@ -64,4 +65,18 @@ export const plansApi = {
   start: (id: Id) => http.post<ApiResult<void>>(`/plans/${id}/start`).then((r) => r.data),
   complete: (id: Id) => http.post<ApiResult<void>>(`/plans/${id}/complete`).then((r) => r.data),
   cancel: (id: Id) => http.post<ApiResult<void>>(`/plans/${id}/cancel`).then((r) => r.data),
+
+  /** 执行进度。任何状态可读，草稿阶段返回全 0 */
+  progress: (id: Id) =>
+    http.get<ApiResult<PlanProgressVO>>(`/plans/${id}/progress`).then((r) => r.data.data),
+
+  /**
+   * 勾选 / 取消勾选行程项，返回最新进度。
+   * 后端幂等（uk_plan_item + ON DUPLICATE KEY），重复点不会产生重复行；
+   * 只有「进行中」能写，其他状态返回 30103。
+   */
+  markProgress: (id: Id, itemId: Id, completed: boolean) =>
+    http
+      .post<ApiResult<PlanProgressVO>>(`/plans/${id}/progress`, { itemId, completed })
+      .then((r) => r.data.data),
 }

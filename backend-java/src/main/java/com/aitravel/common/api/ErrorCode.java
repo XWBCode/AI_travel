@@ -37,6 +37,8 @@ public enum ErrorCode {
     PLAN_STATE_INVALID(30103, "当前计划状态不允许该操作"),
     /** 乐观锁冲突：version 已过期 */
     PLAN_VERSION_CONFLICT(30104, "计划已被修改，请刷新后重试"),
+    /** 行程项不属于该计划（防止拿别人的 itemId 打勾） */
+    PLAN_ITEM_NOT_FOUND(30105, "行程项不存在或不属于该计划"),
     SESSION_NOT_FOUND(30201, "会话不存在"),
 
     AI_SERVICE_UNAVAILABLE(50201, "AI 服务暂时不可用"),
