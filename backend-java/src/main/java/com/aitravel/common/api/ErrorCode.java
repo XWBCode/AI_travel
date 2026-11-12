@@ -39,6 +39,8 @@ public enum ErrorCode {
     PLAN_VERSION_CONFLICT(30104, "计划已被修改，请刷新后重试"),
     /** 行程项不属于该计划（防止拿别人的 itemId 打勾） */
     PLAN_ITEM_NOT_FOUND(30105, "行程项不存在或不属于该计划"),
+    /** 回滚目标版本不存在（只保留「内容变化」的版本，不是每个序号都有快照） */
+    PLAN_VERSION_NOT_FOUND(30106, "该版本快照不存在"),
     SESSION_NOT_FOUND(30201, "会话不存在"),
 
     AI_SERVICE_UNAVAILABLE(50201, "AI 服务暂时不可用"),

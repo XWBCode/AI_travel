@@ -31,8 +31,8 @@ import java.util.Map;
 /**
  * 计划接口（05 §5）。
  * <p>
- * 已实现：生成、列表、详情、编辑草稿、确认与状态迁移、版本列表、执行进度（M2）。
- * 未实现（已写入开发计划，不得声称已完成）：行程条目增删、调整建议、通知、版本回滚。
+ * 已实现：生成、列表、详情、编辑草稿、确认与状态迁移、版本列表与回滚、执行进度（M2）。
+ * 未实现（已写入开发计划，不得声称已完成）：行程条目增删、调整建议、通知。
  * <p>
  * 权限一律由 {@link CurrentUser} + Service 层的归属校验保证；控制器不接收 userId 参数，
  * 避免越权（AC-14）。
@@ -108,6 +108,18 @@ public class PlanController {
     @GetMapping("/{id}/versions")
     public Result<List<PlanService.VersionVO>> versions(@PathVariable Long id) {
         return Result.ok(planService.versions(id, CurrentUser.requireUserId()));
+    }
+
+    /**
+     * 回滚到指定版本（M2-2）。
+     * <p>
+     * 回滚只替换<b>内容</b>，不回退状态：v3 的草稿回滚到 v1 之后仍是草稿，
+     * version 继续递增到 v4。历史只向前写，不回改写。
+     */
+    @PostMapping("/{id}/versions/{versionNo}/rollback")
+    public Result<PlanService.RollbackVO> rollback(@PathVariable Long id,
+                                                   @PathVariable int versionNo) {
+        return Result.ok(planService.rollback(id, CurrentUser.requireUserId(), versionNo));
     }
 
     /**

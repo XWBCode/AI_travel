@@ -162,6 +162,21 @@ export interface PlanUpdatePayload {
   baseVersion?: number
 }
 
+/**
+ * 回滚结果（`POST /api/plans/{id}/versions/{versionNo}/rollback`）。
+ * <p>
+ * `clearedProgress` 是本次回滚清掉的打勾记录数：回滚会重建行程项、itemId 全变，
+ * 进度必须一起清空。这个字段要显示给用户，否则「进度为什么归零了」无从解释。
+ */
+export interface PlanRollbackResult {
+  plan: TravelPlan
+  /** 恢复自哪个版本 */
+  restoredFrom: number
+  /** 回滚后的新版本号（继续递增，不覆盖历史） */
+  version: number
+  clearedProgress: number
+}
+
 /** 计划状态机（05 文档 §5）：前端只按状态显示可执行的动作 */
 export const PLAN_STATUS_TEXT: Record<string, string> = {
   DRAFT: '草稿',

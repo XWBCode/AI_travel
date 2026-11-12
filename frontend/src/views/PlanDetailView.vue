@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, h, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { plansApi } from '@/api'
@@ -15,6 +15,7 @@ import {
 } from '@/api/types'
 import FactBadge from '@/components/FactBadge.vue'
 import PlanEditDialog from '@/components/PlanEditDialog.vue'
+import { canRollback, canRollbackTo, rollbackConfirmText, rollbackSuccessText, versionLabel } from '@/utils/rollback'
 
 /**
  * 计划详情。
@@ -35,6 +36,8 @@ const marking = ref<string | null>(null)
 const loading = ref(false)
 const acting = ref(false)
 const editing = ref(false)
+/** 正在回滚的版本号，避免连点；null 表示没有进行中的回滚 */
+const rollingBack = ref<number | null>(null)
 
 const planId = computed(() => String(route.params.id ?? ''))
 const status = computed(() => plan.value?.status ?? '')
@@ -151,8 +154,55 @@ async function runAction(action: 'confirm' | 'start' | 'complete' | 'cancel'): P
   }
 }
 
-function basicMeta(): Array<{ label: string; value: string }> {
-  const basic = plan.value?.basic
+/**
+ * 回滚到某个版本。
+ *
+ * 确认弹窗必须把「进度会清空」讲在前面：回滚会重建行程条目、itemId 全变，
+ * 旧的勾选记录对不上新条目，不清掉就会显示「完成了 3 项」却一项都没打勾。
+ */
+async function rollbackTo(version: PlanVersionVO): Promise<void> {
+  if (!plan.value || rollingBack.value !== null) return
+  const current = plan.value.version
+  const completed = progress.value?.completed ?? 0
+
+  // 多行文案用 VNode 渲染：纯文本模式下 \n 会被折叠成空格，读起来像一句话
+  const text = rollbackConfirmText(version.versionNo, current, completed)
+  try {
+    await ElMessageBox.confirm(
+      h(
+        'div',
+        { style: 'line-height: 1.75; max-width: 430px' },
+        text.split('\n').map((line) => h('p', { style: 'margin: 0 0 6px' }, line)),
+      ),
+      `回滚到 v${version.versionNo}`,
+      { confirmButtonText: '确定回滚', cancelButtonText: '再想想' },
+    )
+  } catch {
+    return
+  }
+
+  rollingBack.value = version.versionNo
+  try {
+    const result = await plansApi.rollback(plan.value.planId, version.versionNo)
+    // 直接用返回的详情替换，避免「回滚成功再拉一次」中间闪一下旧内容
+    plan.value = result.plan
+    ElMessage.success(
+      rollbackSuccessText(result.restoredFrom, result.version, result.clearedProgress),
+    )
+    // 版本列表与进度都变了；失败保留已更新的正文，不因为补充信息失败就报错
+    void plansApi
+      .versions(plan.value.planId)
+      .then((list) => (versions.value = list))
+      .catch(() => undefined)
+    progress.value = await plansApi.progress(plan.value.planId).catch(() => null)
+  } catch {
+    // 版本不存在 / 终态拒绝 / 并发冲突由拦截器提示，这里不叠第二个弹窗
+  } finally {
+    rollingBack.value = null
+  }
+}
+
+function basicMeta(): Array<{ label: string; value: string }> {  const basic = plan.value?.basic
   if (!basic) return []
   const items: Array<{ label: string; value: string }> = []
   items.push({ label: '出发地', value: basic.originCity || '待补充' })
@@ -353,12 +403,30 @@ onMounted(load)
         <section v-if="versions.length" class="block">
           <h2>版本历史</h2>
           <ul class="versions">
-            <li v-for="v in versions" :key="v.id">
+            <li
+              v-for="v in versions"
+              :key="v.id"
+              :class="{ current: v.versionNo === plan.version }"
+            >
               <span class="v-no">v{{ v.versionNo }}</span>
-              <span class="v-note">{{ v.changeSummary || '快照' }}</span>
+              <span class="v-note">{{ versionLabel(v) }}</span>
               <span class="v-time">{{ formatTime(v.createTime) }}</span>
+              <!-- 当前版本没有「恢复到自己」的意义，后端也会拒，干脆不显示按钮 -->
+              <button
+                v-if="canRollbackTo(v.versionNo, status, plan.version)"
+                type="button"
+                class="v-rollback"
+                :disabled="rollingBack !== null"
+                @click="rollbackTo(v)"
+              >
+                {{ rollingBack === v.versionNo ? '回滚中…' : '回滚' }}
+              </button>
+              <span v-else-if="v.versionNo === plan.version" class="v-current">当前</span>
             </li>
           </ul>
+          <p v-if="!canRollback(status)" class="v-hint">
+            行程已结束，历史版本只能查看。要改内容请新建一份计划。
+          </p>
         </section>
       </template>
 
@@ -769,6 +837,51 @@ onMounted(load)
 }
 
 .v-time {
+  color: #a8b1bd;
+}
+
+/* 当前版本整行淡底，一眼看出「我现在在哪一版」 */
+.versions li.current {
+  background: #f8fafc;
+  margin: 0 -8px;
+  padding: 7px 8px;
+  border-radius: 6px;
+}
+
+.v-rollback {
+  flex: none;
+  padding: 2px 10px;
+  font-size: 11px;
+  color: var(--at-primary);
+  background: #fff;
+  border: 1px solid #d8e0ea;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.v-rollback:hover:not(:disabled) {
+  border-color: var(--at-primary);
+}
+
+.v-rollback:disabled {
+  color: #b6bfca;
+  border-color: #e8ecf1;
+  cursor: not-allowed;
+}
+
+.v-current {
+  flex: none;
+  padding: 2px 10px;
+  font-size: 11px;
+  color: #8b95a3;
+  background: #eef1f5;
+  border-radius: 999px;
+}
+
+.v-hint {
+  margin: 10px 0 0;
+  font-size: 12px;
   color: #a8b1bd;
 }
 </style>

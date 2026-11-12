@@ -10,13 +10,16 @@ import com.aitravel.modules.plan.entity.PlanVersion;
 import com.aitravel.modules.plan.entity.TravelDay;
 import com.aitravel.modules.plan.entity.TravelItem;
 import com.aitravel.modules.plan.entity.TravelPlan;
+import com.aitravel.modules.plan.entity.TravelProgress;
 import com.aitravel.modules.plan.entity.TransportSegment;
 import com.aitravel.modules.plan.mapper.AccommodationMapper;
 import com.aitravel.modules.plan.mapper.BudgetItemMapper;
+import com.aitravel.modules.plan.mapper.PlanRollbackMapper;
 import com.aitravel.modules.plan.mapper.PlanVersionMapper;
 import com.aitravel.modules.plan.mapper.TravelDayMapper;
 import com.aitravel.modules.plan.mapper.TravelItemMapper;
 import com.aitravel.modules.plan.mapper.TravelPlanMapper;
+import com.aitravel.modules.plan.mapper.TravelProgressMapper;
 import com.aitravel.modules.plan.mapper.TransportSegmentMapper;
 import com.aitravel.modules.plan.validation.PlanSchemaValidator;
 import com.aitravel.modules.plan.validation.PlanStatus;
@@ -61,6 +64,8 @@ public class PlanStoreService {
     private final BudgetItemMapper budgetItemMapper;
     private final AccommodationMapper accommodationMapper;
     private final PlanVersionMapper versionMapper;
+    private final PlanRollbackMapper rollbackMapper;
+    private final TravelProgressMapper progressMapper;
     private final PlanAssembler assembler;
     /** 只用于「删天之后重算待核实统计」，不承担放行校验的职责（校验仍在 PlanService 里做） */
     private final PlanSchemaValidator validator;
@@ -110,6 +115,22 @@ public class PlanStoreService {
         planMapper.insert(plan);
         Long planId = plan.getId();
 
+        writeChildren(planId, dto);
+        // 生成即写 v0 快照：否则「最初那一版」在版本列表里点不得（没有快照可回），
+        // 而用户最想回到的往往正是 AI 刚生成、还没被自己改过的样子
+        writeSnapshotIfAbsent(plan, 0, "AI 生成初稿", userId);
+        log.info("计划落库完成 planId={} userId={} days={}", planId, userId, nullSafe(dto.getDays()).size());
+        return planId;
+    }
+
+    /**
+     * 写入全部子表：天、行程项、交通段、住宿、预算条目。
+     * <p>
+     * 生成与回滚<b>共用</b>这一段：回滚是按快照重建，如果另写一份实现，
+     * 「跨城段的 day_id 留空」「itemOrder → itemId 的映射」这类规则迟早会漂移，
+     * 回滚出来的计划就会和原计划长得不一样。
+     */
+    private void writeChildren(Long planId, PlanDraftDto dto) {
         for (PlanDraftDto.Day dayDto : nullSafe(dto.getDays())) {
             TravelDay day = new TravelDay();
             day.setPlanId(planId);
@@ -181,8 +202,6 @@ public class PlanStoreService {
                 budgetItemMapper.insert(item);
             }
         }
-        log.info("计划落库完成 planId={} userId={} days={}", planId, userId, nullSafe(dto.getDays()).size());
-        return planId;
     }
 
     @Transactional(readOnly = true)
@@ -303,6 +322,122 @@ public class PlanStoreService {
         log.info("计划已编辑 planId={} version {} -> {} 变更：{}",
                 planId, baseVersion, latest.getVersion(), resolved.summary());
         return true;
+    }
+
+    /**
+     * 回滚到指定版本（M2-2）。
+     *
+     * <p>语义是「<b>把内容换成那一刻的样子</b>」，不是「把整行记录改成那一刻」：
+     * 状态、确认时间、会话来源都不回退——用户回滚的是行程内容，不是时间线。
+     * 因此回滚后 version 仍然<b>递增</b>，历史只向前写，不会被改写。
+     *
+     * <p>四个必须做的动作，少一个都会留下不可解释的状态：
+     * <ol>
+     *   <li><b>回滚前存快照</b>：不然这次回滚本身不可撤销，而「回滚错了想回去」
+     *       恰恰是回滚功能最常遇到的第二次操作；</li>
+     *   <li><b>清空进度</b>：行程项会被删掉重建，itemId 全变。不清就会出现
+     *       「进度条说完成了 3 项，列表里却一项都没打勾」；</li>
+     *   <li><b>重建子表</b>：走与生成同一段逻辑，保证跨城段/住宿/预算的映射规则不漂移；</li>
+     *   <li><b>乐观锁</b>：{@code WHERE status=? AND version=?}，与编辑、状态迁移同一套条件。</li>
+     * </ol>
+     *
+     * <p>允许回滚的状态：DRAFT / CONFIRMED / IN_PROGRESS；COMPLETED、CANCELLED 是终态，
+     * 历史内容只读，否则「这次旅行最终是什么样」会随回滚变化。
+     */
+    @Transactional
+    public RollbackOutcome rollback(Long planId, Long userId, int versionNo) {
+        TravelPlan plan = loadOwned(planId, userId);
+        PlanStatus current = PlanStatus.parse(plan.getStatus());
+        if (current == PlanStatus.COMPLETED || current == PlanStatus.CANCELLED) {
+            throw new BizException(ErrorCode.PLAN_STATE_INVALID,
+                    "「" + current.getLabel() + "」的计划不能再回滚");
+        }
+
+        int baseVersion = plan.getVersion() == null ? 0 : plan.getVersion();
+        if (versionNo == baseVersion) {
+            throw new BizException(ErrorCode.BAD_REQUEST,
+                    "当前内容就是 v" + versionNo + "，无需回滚");
+        }
+
+        PlanVersion snapshot = versionMapper.selectOne(Wrappers.<PlanVersion>lambdaQuery()
+                .eq(PlanVersion::getPlanId, planId)
+                .eq(PlanVersion::getVersionNo, versionNo)
+                .orderByDesc(PlanVersion::getId)
+                .last("LIMIT 1"));
+        if (snapshot == null) {
+            throw new BizException(ErrorCode.PLAN_VERSION_NOT_FOUND,
+                    "v" + versionNo + " 没有快照，无法回滚到该版本");
+        }
+
+        JsonNode root;
+        try {
+            root = objectMapper.readTree(snapshot.getSnapshotJson());
+        } catch (Exception e) {
+            log.error("版本快照解析失败 planId={} versionNo={}", planId, versionNo, e);
+            throw new BizException(ErrorCode.INTERNAL_ERROR, "版本快照已损坏，无法回滚");
+        }
+        // 快照是 assemble 的产物，结构与 draft 契约一致，可直接复用 DTO 映射重建子表
+        PlanDraftDto dto = validator.toDto(root);
+        PlanDraftDto.Basic basic = dto.getBasic();
+
+        writeSnapshotIfAbsent(plan, baseVersion, "回滚前自动快照", userId);
+
+        long clearedProgress = deleteChildren(planId);
+        writeChildren(planId, dto);
+
+        int unverified = validator.countUnverifiedFactFields(root);
+        int rows = planMapper.update(null, Wrappers.<TravelPlan>lambdaUpdate()
+                .eq(TravelPlan::getId, planId)
+                .eq(TravelPlan::getStatus, current.name())
+                .eq(TravelPlan::getVersion, baseVersion)
+                .set(TravelPlan::getTitle, dto.getTitle())
+                .set(TravelPlan::getOriginCity, basic == null ? null : basic.getOriginCity())
+                .set(TravelPlan::getDestination, basic == null ? null : basic.getDestination())
+                .set(TravelPlan::getDestinations, basic == null ? null : json(basic.getDestinations()))
+                .set(TravelPlan::getMissingFields, basic == null ? null : json(basic.getMissingFields()))
+                .set(TravelPlan::getStartDate, basic == null ? null : parseDate(basic.getStartDate()))
+                .set(TravelPlan::getEndDate, basic == null ? null : parseDate(basic.getEndDate()))
+                .set(TravelPlan::getDays, basic == null ? null : basic.getDays())
+                .set(TravelPlan::getTravelers, basic == null ? null : basic.getTravelers())
+                .set(TravelPlan::getBudget, json(root.path("budget")))
+                .set(TravelPlan::getPreferences, json(root.path("preferences")))
+                .set(TravelPlan::getRisks, json(root.path("risks")))
+                .set(TravelPlan::getAiNote, dto.getAiNote())
+                .set(TravelPlan::getUnverifiedFieldCount, unverified)
+                .setSql("version = version + 1"));
+        if (rows == 0) {
+            throw conflict(planId);
+        }
+
+        TravelPlan latest = planMapper.selectById(planId);
+        writeSnapshotIfAbsent(latest, latest.getVersion(), "回滚到 v" + versionNo, userId);
+        log.info("计划已回滚 planId={} v{} -> v{}（新 version {}），清空进度 {} 条",
+                planId, baseVersion, versionNo, latest.getVersion(), clearedProgress);
+        return new RollbackOutcome(latest, versionNo, clearedProgress);
+    }
+
+    /**
+     * 清空计划内容（物理删除，原因见 {@link PlanRollbackMapper}）。
+     *
+     * @return 被清掉的打勾记录数，用于在响应里如实告知用户「进度已重置」
+     */
+    private long deleteChildren(Long planId) {
+        long progressRows = progressMapper.selectCount(Wrappers.<TravelProgress>lambdaQuery()
+                .eq(TravelProgress::getPlanId, planId));
+        if (progressRows > 0) {
+            progressMapper.delete(Wrappers.<TravelProgress>lambdaQuery()
+                    .eq(TravelProgress::getPlanId, planId));
+        }
+        rollbackMapper.deleteItems(planId);
+        rollbackMapper.deleteSegments(planId);
+        rollbackMapper.deleteAccommodations(planId);
+        rollbackMapper.deleteDays(planId);
+        rollbackMapper.deleteBudgetItems(planId);
+        return progressRows;
+    }
+
+    /** 回滚结果：{@code clearedProgress} 表示被打勾记录被清掉的条数 */
+    public record RollbackOutcome(TravelPlan plan, int restoredFrom, long clearedProgress) {
     }
 
     /**

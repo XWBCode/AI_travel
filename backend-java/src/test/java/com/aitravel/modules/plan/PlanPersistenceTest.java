@@ -147,7 +147,8 @@ class PlanPersistenceTest {
         planService.confirm(planId, TEST_USER);
         assertEquals("CONFIRMED", statusOf(planId));
         assertEquals(1, versionOf(planId), "确认应把 version 从 0 推到 1");
-        assertEquals(1, count("select count(*) from t_plan_version where plan_id = ?", planId));
+        // v0（生成即留档）+ v1（确认后）各一份
+        assertEquals(2, count("select count(*) from t_plan_version where plan_id = ?", planId));
         assertEquals(1, count("select count(*) from t_plan_version "
                 + "where plan_id = ? and json_extract(snapshot_json, '$.status') = 'CONFIRMED'", planId));
 
@@ -201,10 +202,10 @@ class PlanPersistenceTest {
         assertEquals(4, count("select count(*) from t_travel_day where plan_id = ?", planId));
         assertEquals(1, count("select count(*) from t_travel_day "
                 + "where plan_id = ? and day_index = 4 and day_date = '2026-11-23'", planId));
-        // 改前（v0）+ 改后（v1）各一份快照，M2 回滚才有原稿可回
+        // v0 在生成时就写好（AI 原稿），编辑只补 v1；两份合起来才是「改前 + 改后」
         assertEquals(2, count("select count(*) from t_plan_version where plan_id = ?", planId));
         assertEquals(1, count("select count(*) from t_plan_version "
-                + "where plan_id = ? and version_no = 0 and change_summary = '编辑前自动快照'", planId));
+                + "where plan_id = ? and version_no = 0 and change_summary = 'AI 生成初稿'", planId));
 
         // 天数改少：尾部整天连同其行程项一起删掉（逻辑删除，统计要带 deleted = 0）
         JsonNode shrunk = planService.update(planId, TEST_USER, body("{\"days\":2}"));
@@ -251,7 +252,10 @@ class PlanPersistenceTest {
 
         planService.update(planId, TEST_USER, body("{\"title\":\"成都乐山三日游\",\"days\":3}"));
         assertEquals(0, versionOf(planId), "值与原来一致时不该推版本");
-        assertEquals(0, count("select count(*) from t_plan_version where plan_id = ?", planId));
+        // v0 是生成时写的「AI 生成初稿」，不算这次保存产生的新版本
+        assertEquals(1, count("select count(*) from t_plan_version where plan_id = ?", planId));
+        assertEquals(0, count("select count(*) from t_plan_version "
+                + "where plan_id = ? and version_no > 0", planId), "无变更保存不得新增版本");
     }
 
     // ---------------- helpers ----------------

@@ -161,6 +161,22 @@ public class PlanService {
         store.cancel(planId, userId);
     }
 
+    /**
+     * 回滚到指定版本，返回回滚后的详情。
+     * <p>
+     * 直接把新详情一起返回，前端不用「回滚成功再拉一次详情」——两次请求之间
+     * 页面会短暂显示旧内容，看起来像回滚没生效。
+     */
+    public RollbackVO rollback(Long planId, Long userId, int versionNo) {
+        PlanStoreService.RollbackOutcome outcome = store.rollback(planId, userId, versionNo);
+        RollbackVO vo = new RollbackVO();
+        vo.setPlan(detail(planId, userId));
+        vo.setRestoredFrom(outcome.restoredFrom());
+        vo.setVersion(outcome.plan().getVersion());
+        vo.setClearedProgress((int) outcome.clearedProgress());
+        return vo;
+    }
+
     public List<VersionVO> versions(Long planId, Long userId) {
         return store.listVersions(planId, userId).stream().map(this::toVersion).toList();
     }
@@ -212,5 +228,23 @@ public class PlanService {
         private String changeSummary;
         private Long operatorId;
         private LocalDateTime createTime;
+    }
+
+    /**
+     * 回滚结果。
+     * <p>
+     * {@code clearedProgress} 单独返回，是为了让前端能明确告诉用户「你之前打过的 N 个勾没了」。
+     * 悄悄重置进度比多一个字段更糟——用户会以为是自己点错了。
+     * <p>
+     * 注意类型是 {@code Integer} 而不是 {@code Long}：全局 Jackson 配置把包装类型 Long
+     * 一律序列化成字符串（防雪花 ID 丢精度），这里是个数量，被转成 {@code "2"} 之后
+     * 前端 {@code cleared > 0} 恒为 false，提示就永远不出现。
+     */
+    @lombok.Data
+    public static class RollbackVO {
+        private JsonNode plan;
+        private Integer restoredFrom;
+        private Integer version;
+        private Integer clearedProgress;
     }
 }

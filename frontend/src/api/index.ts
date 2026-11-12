@@ -6,6 +6,7 @@ import type {
   MessageVO,
   PageResult,
   PlanProgressVO,
+  PlanRollbackResult,
   PlanSummaryVO,
   PlanUpdatePayload,
   PlanVersionVO,
@@ -78,5 +79,14 @@ export const plansApi = {
   markProgress: (id: Id, itemId: Id, completed: boolean) =>
     http
       .post<ApiResult<PlanProgressVO>>(`/plans/${id}/progress`, { itemId, completed })
+      .then((r) => r.data.data),
+
+  /**
+   * 回滚到指定版本。返回回滚后的详情——前端不用「回滚成功再拉一次详情」，
+   * 两次请求之间页面会短暂显示旧内容，看起来像回滚没生效。
+   */
+  rollback: (id: Id, versionNo: number) =>
+    http
+      .post<ApiResult<PlanRollbackResult>>(`/plans/${id}/versions/${versionNo}/rollback`)
       .then((r) => r.data.data),
 }
