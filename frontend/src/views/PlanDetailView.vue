@@ -207,7 +207,7 @@ onMounted(load)
               <span v-if="day.theme" class="day-theme">{{ day.theme }}</span>
             </div>
 
-            <ul class="items">
+            <ul v-if="day.items?.length" class="items">
               <li v-for="(item, i) in day.items ?? []" :key="`${day.dayIndex}-${i}`" class="item">
                 <div class="item-time">
                   <span>{{ item.startTime || '—' }}</span>
@@ -224,6 +224,10 @@ onMounted(load)
                 </div>
               </li>
             </ul>
+            <!-- 改天数后新补出来的整天没有行程项，要说清是「还没安排」而不是页面丢了内容 -->
+            <p v-else class="day-empty">
+              这一天还没有具体安排。在对话里说一句想怎么过，比如「第 4 天想逛街和吃火锅」，就能补上。
+            </p>
           </div>
         </section>
 
@@ -524,6 +528,17 @@ onMounted(load)
   font-size: 12px;
   line-height: 1.6;
   color: #a8b1bd;
+}
+
+.day-empty {
+  margin: 10px 0 0;
+  padding: 12px 14px;
+  border: 1px dashed var(--at-border);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--at-text-secondary);
+  background: #fbfcfd;
 }
 
 .budget {
