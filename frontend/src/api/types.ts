@@ -45,6 +45,8 @@ export interface MessageVO {
   role: 'user' | 'assistant' | 'tool' | 'system'
   content: string
   status: string
+  /** 失败原因；FAILED 且 content 为空时前端靠它显示提示，否则历史里只剩空气泡 */
+  errorMessage?: string
   model?: string
   createTime: string
 }

@@ -117,6 +117,10 @@ async function selectSession(id: Id): Promise<void> {
         content: m.content,
         status: m.status,
         model: m.model,
+        // 失败原因库里存着（t_chat_message.error_message），以前没外传，
+        // 刷新后 FAILED 的回复就是一个空白气泡——用户只知道"没了"，不知道为什么
+        error: m.status === 'FAILED' ? m.errorMessage || '本次生成失败' : undefined,
+        canRetry: m.status === 'FAILED',
       }))
     await scrollToBottom()
   } finally {
@@ -362,6 +366,12 @@ function useSuggestion(text: string): void {
               v-html="renderMarkdown(m.content || '')"
             />
             <div v-else class="plain">{{ m.content }}</div>
+            <div
+              v-if="m.role === 'assistant' && !m.content && m.status === 'FAILED' && !m.streaming"
+              class="plain muted"
+            >
+              本次没有生成任何内容
+            </div>
             <div v-if="m.progress" class="plan-progress">
               <span class="spinner" />{{ progressText(m) }}
             </div>
@@ -606,6 +616,13 @@ function useSuggestion(text: string): void {
   font-size: 14px;
   white-space: pre-wrap;
   line-height: 1.7;
+}
+
+/* 失败且一个字都没产出时的占位：说明"没有内容"是结果，不是页面坏了 */
+.plain.muted {
+  color: var(--el-text-color-secondary, #909399);
+  font-style: italic;
+  font-size: 13px;
 }
 
 .caret {

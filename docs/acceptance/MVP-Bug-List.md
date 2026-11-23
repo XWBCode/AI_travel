@@ -20,6 +20,7 @@
 | BUG-007 | P2 | `clientRequestId` 幂等键契约承诺过、实现没做 | **已修复** | 见 `BUG-007-Idempotency-Report.md` |
 | BUG-008 | P1 | 真实模型漏写 FactField 的可空键（`fetchedAt`），整份计划被拒 | **已修复**（提示词加固） | — |
 | BUG-009 | P1 | 真实模型长输出偶发 JSON 非法/截断 | **已修复归因**（`finish_reason` 抓取 + 分型提示），成功率仍受上限约束 | 见下方 §BUG-009 |
+| BUG-011 | P2 | 失败回复刷新后成空白气泡（`error_message` 只落库、不外传） | **已修复** | `MessageVO.errorMessage` + 前端 error 映射 |
 
 ---
 
