@@ -53,6 +53,8 @@ public enum ErrorCode {
     ADJUSTMENT_INVALID(30109, "调整建议内容不合法"),
     /** 建议里没有任何实际变更（模型返回了空操作或等价改写），不占用一个版本 */
     ADJUSTMENT_NOOP(30110, "这条建议没有带来任何变化"),
+    /** 通知不存在：正常前端只会标自己刚列出来的那几条，出现即说明请求是拼的或已过期 */
+    NOTIFICATION_NOT_FOUND(30111, "通知不存在"),
     SESSION_NOT_FOUND(30201, "会话不存在"),
 
     AI_SERVICE_UNAVAILABLE(50201, "AI 服务暂时不可用"),

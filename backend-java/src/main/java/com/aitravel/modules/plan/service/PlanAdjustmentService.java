@@ -3,6 +3,7 @@ package com.aitravel.modules.plan.service;
 import com.aitravel.common.api.ErrorCode;
 import com.aitravel.common.exception.BizException;
 import com.aitravel.modules.chat.service.AiServiceClient;
+import com.aitravel.modules.notification.service.NotificationService;
 import com.aitravel.modules.plan.dto.PlanAdjustmentVO;
 import com.aitravel.modules.plan.entity.PlanAdjustment;
 import com.aitravel.modules.plan.entity.TravelDay;
@@ -74,6 +75,8 @@ public class PlanAdjustmentService {
     private final AiServiceClient aiServiceClient;
     private final ObjectMapper objectMapper;
     private final PlatformTransactionManager txManager;
+    /** 确认后记一条「行程已调整」；生成建议本身不通知（计划没变） */
+    private final NotificationService notificationService;
 
     /**
      * 生成一条建议。
@@ -194,6 +197,9 @@ public class PlanAdjustmentService {
         adjustment.setDecidedAt(LocalDateTime.now());
         adjustment.setReason(null);
         adjustmentMapper.updateById(adjustment);
+
+        notificationService.adjustmentConfirmed(latest, adjustmentId, adjustment.getSummary(),
+                latest.getVersion());
 
         log.info("调整已确认 planId={} adjustmentId={} version={} clearedProgress={}",
                 planId, adjustmentId, latest.getVersion(), result.clearedProgress());

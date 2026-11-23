@@ -4,6 +4,16 @@ import type { ApiResult } from './types'
 
 export const TOKEN_KEY = 'ai_travel_token'
 
+/**
+ * 个别请求不该弹全局错误条：典型是通知轮询——每 30 秒弹一次「网络异常」
+ * 除了让用户以为系统坏了，没有任何用处（顶栏已经有服务健康灯）。
+ */
+declare module 'axios' {
+  interface AxiosRequestConfig {
+    skipErrorToast?: boolean
+  }
+}
+
 /** 带业务错误码的异常，供调用方按 code 分流（如 30104 版本冲突） */
 export interface ApiError extends Error {
   code?: number
@@ -39,11 +49,16 @@ http.interceptors.response.use(
     const body = response.data
     // 后端统一 Result，code 非 0 一律视为失败，避免出现“接口 200 但业务失败”被忽略
     if (body && typeof body.code === 'number' && body.code !== 0) {
-      ElMessage.error(body.message || '请求失败')
+      if (!response.config.skipErrorToast) ElMessage.error(body.message || '请求失败')
       // 把业务码带出去：有些调用方要区分「版本冲突」和普通失败（如编辑保存）
       const error: ApiError = new Error(body.message || '请求失败')
       error.code = body.code
       return Promise.reject(error)
+    }
+    // 任何「写了东西」的请求成功后广播一次：通知红点这类派生数据不必等下一次轮询，
+    // 否则用户点完「标记完成」抬头看铃铛，30 秒内都是空的，看起来像没生效
+    if ((response.config.method || 'get').toLowerCase() !== 'get') {
+      window.dispatchEvent(new Event('app:mutation'))
     }
     return response
   },
@@ -56,7 +71,7 @@ http.interceptors.response.use(
         location.hash = '#/login'
       }
       ElMessage.warning('登录已过期，请重新登录')
-    } else {
+    } else if (!error?.config?.skipErrorToast) {
       ElMessage.error(body?.message || error.message || '网络异常')
     }
     return Promise.reject(error)

@@ -23,6 +23,8 @@ import com.aitravel.modules.plan.mapper.TravelProgressMapper;
 import com.aitravel.modules.plan.mapper.TransportSegmentMapper;
 import com.aitravel.modules.plan.validation.PlanSchemaValidator;
 import com.aitravel.modules.plan.validation.PlanStatus;
+import com.aitravel.modules.notification.entity.Notification;
+import com.aitravel.modules.notification.service.NotificationService;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -70,6 +72,8 @@ public class PlanStoreService {
     /** 只用于「删天之后重算待核实统计」，不承担放行校验的职责（校验仍在 PlanService 里做） */
     private final PlanSchemaValidator validator;
     private final ObjectMapper objectMapper;
+    /** 状态迁移成功后记一条通知（R-30）；写失败只打日志，不影响迁移本身 */
+    private final NotificationService notificationService;
 
     /**
      * 事务落库：plan + day + item + transport + budget + accommodation。
@@ -243,6 +247,7 @@ public class PlanStoreService {
         // 快照用「加锁后的最新状态」重建，避免把旧 version 写进版本表
         TravelPlan latest = planMapper.selectById(planId);
         writeSnapshotIfAbsent(latest, latest.getVersion(), "用户确认计划", userId);
+        notificationService.planEvent(latest, Notification.PLAN_CONFIRMED);
         log.info("计划已确认 planId={} version={}", planId, latest.getVersion());
     }
 
@@ -593,6 +598,8 @@ public class PlanStoreService {
             writeSnapshotIfAbsent(after, after.getVersion(),
                     "开始旅行并锚定出发日期 " + anchor, userId);
         }
+        // 通知要用锚定后的日期写正文，所以放在 reindex 之后重读
+        notificationService.planEvent(planMapper.selectById(planId), Notification.PLAN_STARTED);
         log.info("开始旅行 planId={} anchor={} anchorChanged={} totalDays={}",
                 planId, anchor, anchorChanged, totalDays);
     }
@@ -648,6 +655,15 @@ public class PlanStoreService {
         }
         if (planMapper.update(null, update) == 0) {
             throw conflict(planId);
+        }
+        // 只有完成/取消会走到这里（取消可能是从草稿出发），两者都值得记一条
+        String notifyType = switch (target) {
+            case COMPLETED -> Notification.PLAN_COMPLETED;
+            case CANCELLED -> Notification.PLAN_CANCELLED;
+            default -> null;
+        };
+        if (notifyType != null) {
+            notificationService.planEvent(plan, notifyType);
         }
         log.info("计划状态变更 planId={} {} -> {}", planId, current, target);
     }

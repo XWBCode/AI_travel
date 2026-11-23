@@ -4,6 +4,7 @@ import type {
   Id,
   LoginResponse,
   MessageVO,
+  NotificationPageVO,
   PageResult,
   AdjustmentConfirmResult,
   PlanAdjustmentVO,
@@ -133,4 +134,26 @@ export const plansApi = {
   /** 最近若干条建议（含已处理），用于回看 */
   adjustments: (id: Id) =>
     http.get<ApiResult<PlanAdjustmentVO[]>>(`/plans/${id}/adjustments`).then((r) => r.data.data),
+}
+
+/**
+ * 站内通知（R-30）。所有请求都带 `skipErrorToast`：
+ * 轮询失败时顶栏的健康灯已经说明问题了，再每 30 秒弹一次红条毫无意义。
+ */
+export const notificationsApi = {
+  list: (params: { page?: number; size?: number; unreadOnly?: boolean } = {}) =>
+    http
+      .get<ApiResult<NotificationPageVO>>('/notifications', { params, skipErrorToast: true })
+      .then((r) => r.data.data),
+
+  /** 标记单条已读；返回操作后的未读数，前端直接拿去更新红点 */
+  markRead: (id: Id) =>
+    http
+      .post<ApiResult<number>>(`/notifications/${id}/read`, undefined, { skipErrorToast: true })
+      .then((r) => r.data.data),
+
+  markAllRead: () =>
+    http
+      .post<ApiResult<number>>('/notifications/read-all', undefined, { skipErrorToast: true })
+      .then((r) => r.data.data),
 }

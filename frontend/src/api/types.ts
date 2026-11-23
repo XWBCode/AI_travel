@@ -321,3 +321,37 @@ export interface AdjustmentConfirmResult {
   clearedProgress: number
   summary: string
 }
+
+/** 通知事件类型（后端 Notification 常量，V7） */
+export type NotificationType =
+  | 'PLAN_CONFIRMED'
+  | 'PLAN_STARTED'
+  | 'PLAN_COMPLETED'
+  | 'PLAN_CANCELLED'
+  | 'ADJUSTMENT_CONFIRMED'
+
+/** 站内通知（`GET /api/notifications`，R-30） */
+export interface NotificationVO {
+  notificationId: string
+  planId?: string | null
+  type: NotificationType
+  title: string
+  body?: string | null
+  /** 关联对象 ID（如调整建议 ID），可空 */
+  refId?: string | null
+  read: boolean
+  readAt?: string | null
+  createTime?: string
+}
+
+/**
+ * 通知列表的一页。比普通分页多一个 `unreadCount`——
+ * 红点和列表必须来自同一次查询，否则会出现「红点 3 条、列表 2 条」。
+ */
+export interface NotificationPageVO {
+  records: NotificationVO[]
+  total: number
+  page: number
+  size: number
+  unreadCount: number
+}

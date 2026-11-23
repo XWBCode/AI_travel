@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/store/user'
+import NotificationBell from '@/components/NotificationBell.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -100,6 +101,7 @@ onUnmounted(() => {
       <header class="topbar">
         <span class="title">{{ route.meta.title || 'AI 旅行助手' }}</span>
         <div class="topbar-right">
+          <NotificationBell v-if="userStore.token || userStore.user" />
           <span class="health" :class="healthClass" :title="`/api/health · ${healthText}`">
             <i class="dot" />{{ healthText }}
           </span>
