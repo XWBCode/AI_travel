@@ -5,6 +5,8 @@ import com.aitravel.common.exception.BizException;
 import com.aitravel.modules.idempotency.entity.IdempotencyRecord;
 import com.aitravel.modules.idempotency.mapper.IdempotencyMapper;
 import com.aitravel.modules.idempotency.service.IdempotencyService;
+import com.aitravel.support.MybatisTableInfo;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DuplicateKeyException;
@@ -36,6 +38,17 @@ class IdempotencyServiceTest {
 
     private final IdempotencyMapper mapper = mock(IdempotencyMapper.class);
     private final IdempotencyService service = new IdempotencyService(mapper);
+
+    /**
+     * BUG-017：`resolveExisting` 用 Lambda 条件构造器（`lambdaUpdate().set(...)`），
+     * 需要 MyBatis-Plus 的 `TableInfo` 缓存；这份缓存只在 Spring 上下文启动时建立。
+     * 不显式初始化的话，这个类**单独跑必红**，只有恰好先跑过会启动上下文的测试类才绿——
+     * 靠顺序绿比红更危险，所以这里自己建。
+     */
+    @BeforeAll
+    static void initTableInfo() {
+        MybatisTableInfo.init(IdempotencyRecord.class);
+    }
 
     private IdempotencyRecord existing(String status) {
         IdempotencyRecord r = new IdempotencyRecord();

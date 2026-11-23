@@ -26,7 +26,7 @@
 | BUG-014 | P2 | 校验器要求跨城段 `fromDayIndex < toDayIndex`，提示词没写，模型输出 3→3 被整份拒绝 | **已修复** | 本轮：规则 6/7/2 补齐（见下方） |
 | BUG-015 | P2 | 本地 `.env` 让单测真的调模型：2 条用例失败，且每次跑测试都在花钱 | **已修复** | 本轮：`tests/conftest.py` 强制 mock（见下方） |
 | BUG-016 | **P1** | 提示词与校验器各写各的：同源检查一上线就查出 **Q-12 从未写进提示词** | **已修复**（结构性解法） | 本轮：`contracts/travel-plan/plan_rules_v1.json` + 两侧同源用例（见下方） |
-| BUG-017 | P2 | `IdempotencyServiceTest` 依赖执行顺序：单独跑必红（MyBatis-Plus Lambda 缓存未初始化） | **已记录，未修**（等决定是否本轮处理） | 见下方 §BUG-017 |
+| BUG-017 | P2 | `IdempotencyServiceTest` 依赖执行顺序：单独跑必红（MyBatis-Plus Lambda 缓存未初始化） | **已修复** | 本轮：`support/MybatisTableInfo` + `scripts/test-isolation.sh`（见下方 §BUG-017） |
 
 ---
 
@@ -365,7 +365,7 @@ Schema 已经有 schema 校验器在两侧各跑一遍）。真正的收益是�
 
 ---
 
-## BUG-017（P2，已记录未修）`IdempotencyServiceTest` 只在特定执行顺序下通过
+## BUG-017（P2，已修复）`IdempotencyServiceTest` 只在特定执行顺序下通过
 
 **怎么发现的**：M3-1 做完后跑 `mvn test`，全量 149 条里红 2 条，都在幂等测试里：
 
@@ -389,16 +389,33 @@ Lambda 条件构造器需要 MyBatis-Plus 的 `TableInfo` 静态缓存；这份�
 **表现**：单跑红、全跑可能绿（取决于 `IdempotencyDbTest` 有没有先跑且没被 skip）。
 这类「靠顺序绿」的测试比红更危险：它会让「本地红 / CI 绿」再出现一次（与 BUG-015 同一形态）。
 
-**建议修法**（未实施，等定范围）：测试类加一段 `@BeforeAll` 显式初始化实体元信息，
-不依赖上下文：
+**修法**（已实施）：测试类自己初始化实体元信息，不依赖上下文：
 
 ```java
 @BeforeAll
 static void initTableInfo() {
-    TableInfoHelper.initTableInfo(
-        new MapperBuilderAssistant(new MybatisConfiguration(), ""), IdempotencyRecord.class);
+    MybatisTableInfo.init(IdempotencyRecord.class);   // support/MybatisTableInfo
 }
 ```
 
-**为什么不顺手改**：M3-1 的范围被 PM 限定在「天气只读展示」，测试基建属于另一条线，
-顺手改会让这轮的 diff 说不清责任。已登记，等排期。
+`MybatisTableInfo` 只做一件事：`TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), entity)`。
+放在 `support/` 下是为了别的纯 Mockito 测试碰到同类问题时直接复用，而不是各写一遍。
+
+**顺手补的防线**：新增 `backend-java/scripts/test-isolation.sh` —— 逐个测试类单独跑一遍。
+因为「全量绿」不等于「每类都对」，而这个缺陷恰恰是全量绿、单跑红。
+不想每次都花 10 分钟，所以它默认不进 `ci-local.sh`，用 `ISOLATION=1 bash scripts/ci-local.sh` 触发。
+
+**审计结果（本机，2026-11-23）**：
+
+```
+共 22 个测试类
+真正执行了用例：13 类；因缺外部依赖跳过：9 类；失败：0 类
+```
+
+13 个有断言的类**全部可独立运行**。另外 9 个（`IdempotencyDbTest`、`PlanPersistenceTest`、
+`PlanTodayTest` 等）需要真实 MySQL `ai_travel_test` 库，本机无库时整类被跳过——
+**它们没有证明力，脚本会标 SKIP 而不是 PASS**。要覆盖它们得先起 `docker-compose` 的 MySQL，
+这是环境问题，不是缺陷。
+
+**为什么不是顺手改**：第一版确实打算挂在 M3-1 里一起改，但 M3-1 的范围被限定在「天气只读展示」。
+PM 定「先修 BUG-017，再决定天气商业化路线」后才动手，diff 才说得清责任。
