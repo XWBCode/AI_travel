@@ -264,3 +264,60 @@ export interface PlanTodayVO {
   completed: number
   percent: number
 }
+
+/** 调整建议里的一项字段变更；before 由服务端从库里回填，前端不自己算 */
+export interface AdjustmentChange {
+  field: string
+  before: string | null
+  after: string | null
+}
+
+export type AdjustmentOpKind =
+  | 'ADD_ITEM'
+  | 'REMOVE_ITEM'
+  | 'UPDATE_ITEM'
+  | 'MOVE_ITEM'
+  | 'REORDER_ITEM'
+  | 'UPDATE_DAY'
+
+/**
+ * 一条增量操作。
+ *
+ * 注意这里没有「整份新计划」：整份替换会换掉全部 itemId，用户已经打的勾会跟着失效。
+ * 调整只点名称要改的那几行，其余原样保留。
+ */
+export interface AdjustmentOp {
+  op: AdjustmentOpKind
+  itemId?: string
+  dayIndex?: number
+  title?: string
+  startTime?: string | null
+  endTime?: string | null
+  note?: string | null
+  fromDayIndex?: number
+  toDayIndex?: number
+  changes?: AdjustmentChange[]
+  orderedItemIds?: string[]
+}
+
+/** AI 调整建议（`POST /api/plans/{id}/adjustments`，R-23） */
+export interface PlanAdjustmentVO {
+  adjustmentId: string
+  planId: string
+  /** 生成建议时计划的版本；与 planVersion 不同说明建议已过期 */
+  baseVersion: number
+  status: 'PENDING' | 'CONFIRMED' | 'REJECTED' | 'EXPIRED'
+  instruction: string
+  summary: string
+  ops: AdjustmentOp[]
+  planVersion: number
+  createTime?: string
+}
+
+/** 确认调整后的结果 */
+export interface AdjustmentConfirmResult {
+  adjustmentId: string
+  version: number
+  clearedProgress: number
+  summary: string
+}

@@ -3,9 +3,11 @@ package com.aitravel.modules.plan.controller;
 import com.aitravel.common.api.PageResult;
 import com.aitravel.common.api.Result;
 import com.aitravel.common.web.CurrentUser;
+import com.aitravel.modules.plan.dto.PlanAdjustmentVO;
 import com.aitravel.modules.plan.dto.PlanProgressVO;
 import com.aitravel.modules.plan.dto.PlanSummaryVO;
 import com.aitravel.modules.plan.dto.PlanTodayVO;
+import com.aitravel.modules.plan.service.PlanAdjustmentService;
 import com.aitravel.modules.plan.service.PlanProgressService;
 import com.aitravel.modules.plan.service.PlanService;
 import com.aitravel.modules.plan.service.PlanTodayService;
@@ -28,6 +30,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import jakarta.servlet.http.HttpServletRequest;
+
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -35,8 +39,9 @@ import java.util.Map;
 /**
  * 计划接口（05 §5）。
  * <p>
- * 已实现：生成、列表、详情、编辑草稿、确认与状态迁移、版本列表与回滚、执行进度（M2）。
- * 未实现（已写入开发计划，不得声称已完成）：行程条目增删、调整建议、通知。
+ * 已实现：生成、列表、详情、编辑草稿、确认与状态迁移、版本列表与回滚、
+ * 执行进度与当日视图、AI 调整建议（M2）。
+ * 未实现（已写入开发计划，不得声称已完成）：站内通知。
  * <p>
  * 权限一律由 {@link CurrentUser} + Service 层的归属校验保证；控制器不接收 userId 参数，
  * 避免越权（AC-14）。
@@ -49,6 +54,7 @@ public class PlanController {
     private final PlanService planService;
     private final PlanProgressService progressService;
     private final PlanTodayService todayService;
+    private final PlanAdjustmentService adjustmentService;
 
     /** 触发生成；返回落库后的计划详情（stored 模型） */
     @PostMapping("/generate")
@@ -174,6 +180,51 @@ public class PlanController {
                 req.getItemId(), req.getCompleted() == null || req.getCompleted()));
     }
 
+    /**
+     * 生成调整建议（M2，R-23）。
+     * <p>
+     * 只产出建议，不改正式计划：AI 的结论先落 {@code t_plan_adjustment}，
+     * 等用户在界面上确认（R-24 / AC-11）。
+     * <p>
+     * 建议里给的是<b>增量操作</b>，不是一份新计划——整份替换会换掉所有 itemId，
+     * 用户已经打的勾会跟着失效。
+     */
+    @PostMapping("/{id}/adjustments")
+    public Result<PlanAdjustmentVO> proposeAdjustment(@PathVariable Long id,
+                                                      @Valid @RequestBody AdjustmentRequest req,
+                                                      HttpServletRequest http) {
+        return Result.ok(adjustmentService.propose(id, CurrentUser.requireUserId(), req.getInstruction(),
+                http.getHeader("X-Trace-Id")));
+    }
+
+    /** 最近若干条调整建议（含已确认/已拒绝），供用户回看 */
+    @GetMapping("/{id}/adjustments")
+    public Result<List<PlanAdjustmentVO>> listAdjustments(@PathVariable Long id) {
+        return Result.ok(adjustmentService.list(id, CurrentUser.requireUserId()));
+    }
+
+    /**
+     * 确认调整：由 Java 应用增量操作、版本 +1、写快照（R-25）。
+     * <p>
+     * 建议生成后计划若又被改过，{@code base_version} 就对不上，返回 {@code 30108}
+     * 而不是硬套——那会把用户期间的修改静默覆盖掉。
+     */
+    @PostMapping("/{id}/adjustments/{adjustmentId}/confirm")
+    public Result<PlanAdjustmentService.ConfirmResult> confirmAdjustment(@PathVariable Long id,
+                                                                        @PathVariable Long adjustmentId) {
+        return Result.ok(adjustmentService.confirm(id, CurrentUser.requireUserId(), adjustmentId));
+    }
+
+    /** 拒绝建议：不改正式计划，不产生版本 */
+    @PostMapping("/{id}/adjustments/{adjustmentId}/reject")
+    public Result<Void> rejectAdjustment(@PathVariable Long id,
+                                         @PathVariable Long adjustmentId,
+                                         @RequestBody(required = false) RejectRequest req) {
+        adjustmentService.reject(id, CurrentUser.requireUserId(), adjustmentId,
+                req == null ? null : req.getReason());
+        return Result.ok();
+    }
+
     @Data
     public static class StartRequest {
 
@@ -182,6 +233,21 @@ public class PlanController {
          * 不做「不得早于今天」这类校验：用户可能昨天就出发了，今天才点开页面。
          */
         private LocalDate startDate;
+    }
+
+    @Data
+    public static class AdjustmentRequest {
+
+        @NotBlank(message = "请先说要调整什么")
+        @Size(max = 500, message = "描述不得超过 500 字")
+        private String instruction;
+    }
+
+    @Data
+    public static class RejectRequest {
+
+        @Size(max = 200, message = "原因不得超过 200 字")
+        private String reason;
     }
 
     @Data

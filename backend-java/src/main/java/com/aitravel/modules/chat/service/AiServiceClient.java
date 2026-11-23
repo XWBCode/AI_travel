@@ -165,6 +165,66 @@ public class AiServiceClient {
     }
 
     /**
+     * 生成调整建议（M2）。
+     * <p>
+     * 与 {@link #generatePlan} 的区别不只是端点：调整的输入是**当前计划的可编辑视图**
+     * （Java 侧构造，带 itemId），输出是一组增量操作，不是完整计划。
+     * 传完整存储模型没有意义——模型既不需要预算和偏好，也无法引用没有 itemId 的行程项。
+     *
+     * @param planView    {@code {title,totalDays,days:[{dayIndex,date,city,theme,items:[...]}]}}
+     * @param instruction 用户原话
+     * @return Python 返回的 {@code data} 节点：{@code summary / ops}
+     */
+    public JsonNode adjustPlan(JsonNode planView, String instruction, String traceId) {
+        String json;
+        try {
+            json = objectMapper.writeValueAsString(Map.of("instruction", instruction, "plan", planView));
+        } catch (Exception e) {
+            throw new com.aitravel.common.exception.BizException(
+                    com.aitravel.common.api.ErrorCode.BAD_REQUEST, "调整请求序列化失败");
+        }
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/plan/adjust"))
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json")
+                .header("X-Trace-Id", traceId == null ? "" : traceId)
+                // 比生成短：调整只改几项，输出远小于整份计划。给 120s 是给弱模型留余量
+                .timeout(Duration.ofSeconds(120))
+                .POST(HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8))
+                .build();
+
+        try {
+            HttpResponse<String> response = httpClient.send(request,
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (response.statusCode() != 200) {
+                throw new com.aitravel.common.exception.BizException(
+                        com.aitravel.common.api.ErrorCode.AI_SERVICE_UNAVAILABLE,
+                        "AI 服务返回状态码 " + response.statusCode());
+            }
+            JsonNode root = objectMapper.readTree(response.body());
+            int code = root.path("code").asInt(0);
+            if (code != 0) {
+                // 模型给的建议不合法时，Python 侧已经翻译成人话，原样转给用户即可
+                throw new com.aitravel.common.exception.BizException(
+                        com.aitravel.common.api.ErrorCode.ADJUSTMENT_INVALID,
+                        root.path("message").asText("调整建议生成失败"));
+            }
+            return root.path("data");
+        } catch (IOException e) {
+            log.error("调用 AI 调整建议失败", e);
+            String detail = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            throw new com.aitravel.common.exception.BizException(
+                    com.aitravel.common.api.ErrorCode.AI_SERVICE_UNAVAILABLE,
+                    "AI 服务连接失败：" + detail + "（请确认 " + baseUrl + " 已启动）");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new com.aitravel.common.exception.BizException(
+                    com.aitravel.common.api.ErrorCode.AI_SERVICE_UNAVAILABLE, "调整建议生成被中断");
+        }
+    }
+
+    /**
      * 只判意图，不生成计划（Python 侧是规则判定，不调模型，毫秒级）。
      * <p>
      * <b>失败不抛异常，返回 {@code null}</b>：这是一次「决策前的预判」，它挂了

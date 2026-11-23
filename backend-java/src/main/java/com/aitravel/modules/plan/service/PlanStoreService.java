@@ -677,7 +677,14 @@ public class PlanStoreService {
      * 唯一索引 {@code uk_plan_version(plan_id, version_no, deleted)} 会拦重复插入，
      * 但那是抛异常；先查再写能让「编辑 + 确认」这类连续操作自然共存。
      */
-    private void writeSnapshotIfAbsent(TravelPlan plan, int versionNo, String changeSummary, Long userId) {
+    /**
+     * 写一份版本快照（同一 version_no 已存在则跳过）。
+     * <p>
+     * 包可见性放开到 public：调整建议的确认流程在 {@code PlanAdjustmentService} 里，
+     * 但它必须和本类的编辑 / 确认 / 回滚用同一种方式写快照——两处各写一份，
+     * 「快照里放什么」迟早会分叉，回滚就变成不可验证的操作。
+     */
+    public void writeSnapshotIfAbsent(TravelPlan plan, int versionNo, String changeSummary, Long userId) {
         Long existing = versionMapper.selectCount(Wrappers.<PlanVersion>lambdaQuery()
                 .eq(PlanVersion::getPlanId, plan.getId())
                 .eq(PlanVersion::getVersionNo, versionNo));

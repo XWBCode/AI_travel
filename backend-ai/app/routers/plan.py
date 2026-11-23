@@ -19,6 +19,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.llm.provider import LLMError
+from app.plan.adjust import AdjustError, run_adjust
 from app.plan.generator import run_generation
 from app.plan.intent import analyze_messages
 
@@ -41,6 +42,17 @@ class MessageIn(BaseModel):
 class PlanRequest(BaseModel):
     messages: list[MessageIn]
     sessionId: str | None = Field(default=None, description="Java 侧会话 ID，仅用于串联日志")
+
+
+class AdjustRequest(BaseModel):
+    """调整建议输入。
+
+    `plan` 是 Java 侧专门构造的**可编辑视图**（带 itemId），不是完整的存储模型：
+    模型只需要知道「第几天、哪一项、几点、叫什么」，事实字段、预算、偏好对它全是噪音。
+    """
+
+    instruction: str = Field(..., description="用户原话，例如「今天太累，下午不去了」")
+    plan: dict = Field(..., description="带 itemId 的行程可编辑视图")
 
 
 def _sse(event: str, data: dict) -> str:
@@ -138,3 +150,20 @@ async def plan_stream(req: PlanRequest, request: Request):
             yield _sse("error", {"code": 50000, "message": f"计划服务内部错误: {type(e).__name__}", "traceId": trace_id})
 
     return StreamingResponse(event_generator(), media_type="text/event-stream", headers=_SSE_HEADERS)
+
+
+@router.post("/plan/adjust")
+async def plan_adjust(req: AdjustRequest, request: Request):
+    """基于当前计划生成调整建议（R-23）。
+
+    只产出建议，不落库、不改正式计划：AC-11 要求「AI 直接写正式计划的次数 = 0」，
+    所以模型的结果必须回 Java、等用户在界面上确认。
+    """
+    provider = request.app.state.provider
+    trace_id = request.headers.get("X-Trace-Id", "")
+    try:
+        data = await run_adjust(provider, req.plan, req.instruction, trace_id)
+    except AdjustError as e:
+        logger.info("adjust rejected trace=%s code=%s msg=%s", trace_id, e.code, e.message)
+        return {"code": e.code, "message": e.message, "data": None, "traceId": trace_id}
+    return {"code": 0, "message": "ok", "data": data, "traceId": trace_id}

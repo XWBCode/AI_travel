@@ -15,6 +15,7 @@ import {
   type TravelPlan,
 } from '@/api/types'
 import FactBadge from '@/components/FactBadge.vue'
+import PlanAdjustDialog from '@/components/PlanAdjustDialog.vue'
 import PlanEditDialog from '@/components/PlanEditDialog.vue'
 import PlanStartDialog from '@/components/PlanStartDialog.vue'
 import PlanTodayPanel from '@/components/PlanTodayPanel.vue'
@@ -52,6 +53,8 @@ const todayMarking = ref<string | null>(null)
 /** 今日 / 全部日程：进行中且能算出今天时默认「今日」 */
 const scheduleView = ref<'today' | 'all'>('all')
 const startDialog = ref(false)
+/** 调整建议框：只有已确认 / 进行中才有意义，草稿直接编辑更快 */
+const adjusting = ref(false)
 
 const planId = computed(() => String(route.params.id ?? ''))
 const status = computed(() => plan.value?.status ?? '')
@@ -108,6 +111,18 @@ async function loadToday(): Promise<void> {
 
 /** 只有进行中能打勾；已完成看汇总，草稿/已确认还没出发 */
 const canTrack = computed(() => status.value === 'IN_PROGRESS')
+
+/**
+ * 调整确认后的收尾：先关窗再刷新。
+ *
+ * 关窗放这里而不是让子组件 emit update:modelValue —— 那条路走通过，但实测在
+ * 「确认成功 + 父组件同时刷新」这个交叠时刻不生效，弹窗会留在原地并把自己算成过期。
+ * 父组件本来就持有 adjusting，由它决定何时关闭是更短、更可控的一条链。
+ */
+async function onAdjustApplied(): Promise<void> {
+  adjusting.value = false
+  await load()
+}
 
 /** 当日卡片里勾选：与「全部日程」共用同一个接口，只刷新当日视图 */
 async function toggleToday(itemId: string, completed: boolean): Promise<void> {
@@ -335,6 +350,15 @@ onBeforeUnmount(() => {
             >
               编辑
             </el-button>
+            <!-- 已确认或进行中才给调整入口：草稿阶段直接编辑，不必绕一圈 AI -->
+            <el-button
+              v-if="status === 'CONFIRMED' || status === 'IN_PROGRESS'"
+              size="small"
+              :disabled="acting"
+              @click="adjusting = true"
+            >
+              调整行程
+            </el-button>
             <el-button
               v-for="action in actions"
               :key="action"
@@ -533,6 +557,13 @@ onBeforeUnmount(() => {
     <PlanEditDialog v-model="editing" :plan="plan" @saved="load" @refresh="load" />
     <!-- 开始行程必须经过这一步：选定的日期就是第 1 天 -->
     <PlanStartDialog v-model="startDialog" :plan="plan" @started="load" />
+    <!-- 调整建议：确认前不动正式计划，确认后由父组件关窗并刷新 -->
+    <PlanAdjustDialog
+      v-if="adjusting"
+      :plan="plan"
+      @close="adjusting = false"
+      @applied="onAdjustApplied"
+    />
   </div>
 </template>
 

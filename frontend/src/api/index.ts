@@ -5,6 +5,8 @@ import type {
   LoginResponse,
   MessageVO,
   PageResult,
+  AdjustmentConfirmResult,
+  PlanAdjustmentVO,
   PlanProgressVO,
   PlanRollbackResult,
   PlanSummaryVO,
@@ -104,4 +106,31 @@ export const plansApi = {
     http
       .post<ApiResult<PlanRollbackResult>>(`/plans/${id}/versions/${versionNo}/rollback`)
       .then((r) => r.data.data),
+
+  /**
+   * 让 AI 基于当前计划生成调整建议（R-23）。
+   *
+   * 只产出建议，不改计划：真正的写入发生在确认之后。所以这里慢一点（模型思考）
+   * 不会影响任何已有数据，用户可以放心等。
+   */
+  proposeAdjustment: (id: Id, instruction: string) =>
+    http
+      .post<ApiResult<PlanAdjustmentVO>>(`/plans/${id}/adjustments`, { instruction })
+      .then((r) => r.data.data),
+
+  /** 确认调整：由 Java 应用增量操作并生成新版本 */
+  confirmAdjustment: (id: Id, adjustmentId: string) =>
+    http
+      .post<ApiResult<AdjustmentConfirmResult>>(`/plans/${id}/adjustments/${adjustmentId}/confirm`)
+      .then((r) => r.data.data),
+
+  /** 放弃建议：不改计划、不产生版本 */
+  rejectAdjustment: (id: Id, adjustmentId: string, reason?: string) =>
+    http
+      .post<ApiResult<void>>(`/plans/${id}/adjustments/${adjustmentId}/reject`, { reason })
+      .then((r) => r.data),
+
+  /** 最近若干条建议（含已处理），用于回看 */
+  adjustments: (id: Id) =>
+    http.get<ApiResult<PlanAdjustmentVO[]>>(`/plans/${id}/adjustments`).then((r) => r.data.data),
 }

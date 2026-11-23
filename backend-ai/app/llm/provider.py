@@ -14,6 +14,7 @@ from __future__ import annotations
 import abc
 import asyncio
 import json
+import re
 from dataclasses import dataclass
 from typing import AsyncGenerator
 
@@ -22,6 +23,35 @@ import httpx
 
 class LLMError(RuntimeError):
     """LLM 调用异常，上层统一转成 SSE error 事件。"""
+
+
+# 上游网关的错误体常把请求里的密钥原样回显（「invalid apikey: sk-xxx」）。
+# 这类文本一旦进了日志或返回给前端，就等于把密钥公开了，所有对外消息都要过一遍这里。
+_SECRET_PATTERN = re.compile(r"sk-[A-Za-z0-9_\-]{8,}")
+
+
+def mask_secret(text: str) -> str:
+    return _SECRET_PATTERN.sub("sk-***", text)
+
+
+def _describe_gateway_error(body: str) -> str:
+    """把网关错误体翻成一句能直接看懂的日志。
+
+    上游有两种失败形态：非 200 带错误体，以及 **200 但 body 是错误 JSON**（Key 失效就是这样）。
+    后者若只按 SSE 逐行解析，读到的永远是零个事件，最终报「模型返回空内容」——
+    排查时会一路怀疑 prompt 和模型，真正的原因却是凭证过期。
+    """
+    text = body.strip()
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict):
+            message = data.get("message") or data.get("error") or text
+            code = data.get("code")
+            prefix = f"网关错误码 {code}：" if code else "网关返回错误："
+            return mask_secret(f"{prefix}{message}")
+    except json.JSONDecodeError:
+        pass
+    return mask_secret(text[:300])
 
 
 @dataclass
@@ -127,8 +157,15 @@ class OpenAICompatibleProvider(LLMProvider):
                                          json=payload, headers=headers) as resp:
                     if resp.status_code != 200:
                         body = (await resp.aread()).decode("utf-8", errors="ignore")[:500]
-                        # 注意：日志和异常中绝不输出请求头，避免密钥泄漏
-                        raise LLMError(f"模型服务返回 {resp.status_code}: {body}")
+                        # 注意：日志和异常中绝不输出请求头；错误体也要脱敏（上游会回显密钥）
+                        raise LLMError(mask_secret(f"模型服务返回 {resp.status_code}: {body}"))
+                    # 200 + application/json = 网关把错误包进了正常响应（典型是 invalid apikey）。
+                    # 不识别这一层，下面按 SSE 逐行读只会读到零个事件，最后误报「模型返回空内容」。
+                    content_type = (resp.headers.get("content-type") or "").lower()
+                    if "application/json" in content_type and "event-stream" not in content_type:
+                        body = (await resp.aread()).decode("utf-8", errors="ignore")
+                        raise LLMError(_describe_gateway_error(body))
+
                     async for line in resp.aiter_lines():
                         if not line or not line.startswith("data:"):
                             continue
@@ -141,6 +178,9 @@ class OpenAICompatibleProvider(LLMProvider):
                             continue
                         choices = chunk.get("choices") or []
                         if not choices:
+                            # 流中途也可能夹一条 {"code":400,"message":...}，别当正常空块跳过
+                            if chunk.get("code") not in (None, 0) or chunk.get("error"):
+                                raise LLMError(_describe_gateway_error(data))
                             continue
                         delta = choices[0].get("delta") or {}
                         piece = delta.get("content")
