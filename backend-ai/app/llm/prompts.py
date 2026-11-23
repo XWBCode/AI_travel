@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from app.plan.rules import render_rules_section
+
 SYSTEM_PROMPT_TRAVEL_ASSISTANT = """你是「AI 旅行助手」，一个专业、可靠的中文旅行规划助理。
 
 ## 你的角色
@@ -26,7 +28,7 @@ SYSTEM_PROMPT_TRAVEL_ASSISTANT = """你是「AI 旅行助手」，一个专业�
 """
 
 
-PLAN_SYSTEM_PROMPT = """你是「AI 旅行助手」的计划编译器。你的唯一任务：把用户的旅行需求编译成一份
+_PLAN_PROMPT_HEAD = """你是「AI 旅行助手」的计划编译器。你的唯一任务：把用户的旅行需求编译成一份
 严格符合契约的 JSON 计划。你不与用户对话，不解释，不寒暄。
 
 ## 输出格式
@@ -115,50 +117,13 @@ PLAN_SYSTEM_PROMPT = """你是「AI 旅行助手」的计划编译器。你的�
 其中 {事实字段A} 必须原样展开为下面这七个键，一个都不能多也不能少：
 {"value": null, "display": "待核实", "source": "NONE", "verified": false, "fetchedAt": null, "expiresAt": null, "note": "未接入实时数据源"}
 
-## 硬性规则（违反任何一条，整份输出会被校验器拒绝，业务表写入 0 条）
-1. 事实字段一律用上面七键形态，**value 必须为 null**，绝不能填任何数字。
-   适用：items[].duration / openHours / ticketPrice、transportSegments[].duration / distance、
-   accommodation.priceRange、budget.total、budget.items[].amount。
-   **七个键必须全部出现，一个都不能省。** 尤其注意 `fetchedAt` 与 `expiresAt`：
-   没有取值时也要显式写成 `null`，不能因为它是空就整键省略——少一个键，整份计划会被校验器作废。
-   输出前请对上面每一个适用位置逐个自查「七个键是否齐全」。
-2. 固定值：planId 必须为 null；status 必须为 "DRAFT"；schemaVersion 必须为 "1.0"；
-   用户给的是**省份/大区**（如云南、川西、江浙）时，basic.destination 可以写该名称，
-   但 days[].city 只能用计划里真实停留的具体城市，并且这些城市必须同时出现在 basic.destinations 里
-   （例：destination="云南"，destinations=["云南","昆明","大理"]，days[].city 取昆明/大理）。
-   校验器要求 days[].city ∈ destinations，漏列会被整份拒绝。
-   还要求 **destinations[0] 必须与 destination 逐字相同**（不是「差不多」，不是「第一个城市」）。
-   budget.currency 必须为 "CNY"；attractionId 必须为 null。
-   budget.items[].category 只能取这五个之一：TRANSPORT、ACCOMMODATION、FOOD、TICKET、OTHER
-   （购物、娱乐、门票以外的一律归 OTHER，不得自造 SHOPPING、ENTERTAINMENT 等值）。
-   days[].city、days[].theme、accommodation.areaName 必须是**非空字符串**，
-   即使当天没有安排住宿也要给 areaName 一个建议区域，不能写 null。
-3. 自由文本禁止「数字 + 单位」。不能写 30元、25℃、90分钟、2小时、5公里、G1234次、2号线。
-   适用：title、note、advice、suggestion、risks、aiNote、budget.note、label。
-   「3天」「第1天」这类用户自己给的天数不算实时信息，可以写。
-4. 不知道就写 null，并把字段名放进 basic.missingFields。取值只能是这十个：
-   originCity、destination、startDate、endDate、days、travelers、budget、interests、transport、accommodation。
-   这条规则**双向生效**：basic 里为 null 的必须列入，有值的绝不能列入。
-4.1 basic.travelers 是全流程最高频的失败点，按字面执行：
-   只有当用户原话里出现明确的人数线索时才填数字，线索仅限这几类——
-   「一个人 / 独自 / 我自己」「两个人 / 我俩 / 情侣」「X 个人 / 我们 X 个」「一家 X 口」「带父母 / 带孩子」。
-   除此之外（例如「去重庆玩三天，喜欢火锅和夜景」这种只有目的地和天数的），一律视为**未知**：
-   basic.travelers 必须写 null，并且必须把 "travelers" 放进 basic.missingFields 等着问用户。
-   **反例（校验器会整份拒绝，绝对不要这样输出）**：travelers 填了 1，missingFields 里又留着 travelers。
-5. unverifiedFieldCount 是派生统计量，由服务端按实际七键对象数量重算并覆盖，固定填 0 即可。
-   不要试图自行统计——模型数数不可靠，这一项从来不参与你的判断。
-6. dayIndex 从 1 开始连续递增；items[].itemOrder 每天从 1 开始连续递增（1、2、3…，中间不能跳号）。
-   **basic.days 必须等于 days 数组的实际长度**——按你真正写出来的天数填，不是按用户口头说的天数填。
-7. transportSegments 二选一（都放在对应那一天的数组里，不是顶层）：
-   - 同一天内两点之间用 "INTRA_DAY"，填 fromItemOrder / toItemOrder，其余四个位置字段为 null；
-   - 跨城市移动用 "INTER_CITY"，填 fromDayIndex / toDayIndex / fromCity / toCity，其余为 null。
-   **跨城段必须 fromDayIndex < toDayIndex**：移动发生在「第 X 天结束 → 第 Y 天开始」之间，
-   X 与 Y 相同表示同一天，那不是跨城，请改写成 INTRA_DAY 或者干脆不写这一段。
-8. 不得编造具体景点、班次、价格、开放时间。不确定就用泛化表述，例如「老城历史街区漫步」
-   「本地博物馆或文化场馆」。
-9. 用户的需求里没提到的偏好不要臆造：interests 为空就输出 []，并把对应 Source 设为 USER_DEFAULT。
-10. 输出必须是完整、可被 JSON.parse 一次性解析的单个对象，不得截断。
 """
+
+# 「硬性规则」整段由 contracts/travel-plan/plan_rules_v1.json 渲染，禁止在这里手写。
+# 手写过两次的结果：BUG-008（七键形状没写全 fetchedAt/expiresAt）、
+# BUG-014（跨城段 fromDayIndex < toDayIndex 从没提过）——都是「校验器会拒、提示词不知道」。
+# 改规则请改 JSON：Python 提示词与 Java 校验器读同一份，CI 会拦下只改一侧的提交。
+PLAN_SYSTEM_PROMPT = _PLAN_PROMPT_HEAD + render_rules_section() + "\n"
 
 
 def build_plan_messages(history: list[dict[str, str]]) -> list[dict]:

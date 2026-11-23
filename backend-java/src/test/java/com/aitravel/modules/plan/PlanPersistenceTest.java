@@ -71,10 +71,11 @@ class PlanPersistenceTest {
     }
 
     @Test
-    @DisplayName("AC-07：50 组畸形样例全部被拒，业务表落库数 = 0")
+    @DisplayName("AC-07：畸形样例（≥50 组）全部被拒，业务表落库数 = 0")
     void malformedDraftsNeverReachDatabase() {
         List<PlanMutants.Mutant> mutants = PlanMutants.all();
-        assertEquals(50, mutants.size());
+        int total = mutants.size();
+        assertTrue(total >= 50, () -> "畸形样例数量必须达到 02 §6 的 50 组，当前 " + total);
 
         int rejected = 0;
         for (PlanMutants.Mutant mutant : mutants) {
@@ -89,14 +90,14 @@ class PlanPersistenceTest {
                     "拒绝原因应是契约校验失败：" + mutant.name());
             rejected++;
         }
-        assertEquals(50, rejected);
+        assertEquals(total, rejected);
 
         assertEquals(0, count("select count(*) from t_travel_plan where user_id = ?", TEST_USER),
                 "AC-07：畸形样例的落库数必须为 0");
         assertEquals(0, count("select count(*) from t_travel_day where plan_id in "
                 + "(select id from t_travel_plan where user_id = ?)", TEST_USER));
         // 失败也必须留痕，否则「模型吐了什么」无从追溯（R-14）
-        assertEquals(50, count("select count(*) from t_ai_generation_log "
+        assertEquals(total, count("select count(*) from t_ai_generation_log "
                 + "where user_id = ? and validate_result = 'FAIL'", TEST_USER),
                 "每次被拒都要写入生成留痕");
     }

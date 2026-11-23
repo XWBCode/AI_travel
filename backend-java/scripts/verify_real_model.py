@@ -8,7 +8,8 @@
 
 用法：
   python backend-java/scripts/verify_real_model.py --gen 20 --adjust 10
-产物：docs/acceptance/raw/real-model-run.json
+  python backend-java/scripts/verify_real_model.py --gen 6 --adjust 0 --out raw/xxx.json
+产物：docs/acceptance/raw/real-model-run.json（可用 --out 指到别处，避免把上一轮证据覆盖掉）
 """
 
 from __future__ import annotations
@@ -22,8 +23,8 @@ import urllib.request
 import uuid
 
 BASE = "http://localhost:8080/api"
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..",
-                   "docs", "acceptance", "raw", "real-model-run.json")
+DEFAULT_OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..",
+                           "docs", "acceptance", "raw", "real-model-run.json")
 
 TRAVEL_INPUTS = [
     "帮我规划成都三天，两个人，预算五千，喜欢美食和历史文化",
@@ -158,7 +159,15 @@ def main() -> int:
     ap.add_argument("--adjust", type=int, default=10)
     ap.add_argument("--user", default="realverify", help="固定验收账号，便于分段复跑")
     ap.add_argument("--skip-gen", action="store_true", help="复用上次生成的计划，只补跑调整")
+    ap.add_argument("--out", default=None,
+                    help="产物路径（默认 raw/real-model-run.json）。小样本复查时务必指到别的文件名，"
+                         "否则会把上一次的完整证据覆盖掉——2026-11-23 踩过一次")
     args = ap.parse_args()
+
+    global OUT
+    if args.out:
+        OUT = args.out if os.path.isabs(args.out) else os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "..", "..", args.out)
 
     token = new_user(args.user)
     print(f"user ready, gen={args.gen} adjust={args.adjust}")
@@ -234,7 +243,11 @@ def main() -> int:
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump(summary, f, ensure_ascii=False, indent=2)
     print(json.dumps({k: summary[k] for k in ("gen", "adjust")}, ensure_ascii=False))
-    return 0 if summary["gen"]["ok"] >= 18 and summary["adjust"]["ok"] >= 9 else 1
+    # 通过线按本次样本量收缩：默认口径仍是 20 生成里 ≥18、10 调整里 ≥9
+    need_gen = min(18, args.gen)
+    need_adj = min(9, args.adjust)
+    passed = summary["gen"]["ok"] >= need_gen and summary["adjust"]["ok"] >= need_adj
+    return 0 if passed else 1
 
 
 if __name__ == "__main__":

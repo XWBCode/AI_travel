@@ -13,11 +13,14 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * AC-07 的畸形样例集：合规样例 + 50 组「只改一处」的变异。
+ * AC-07 的畸形样例集：合规样例 + 每组「只改一处」的变异（当前 51 组，要求 ≥50）。
  * <p>
  * 抽成公共工具的原因：校验器单测要证明「全被拒」，集成测试要证明「一条都没落库」，
  * 两边必须用<b>同一份样例</b>。各自复制一份的话，很容易出现「单测拒了 50 组、
  * 落库测试只跑了 30 组」这种看起来都绿、实际没覆盖的情况。
+ * <p>
+ * 命名约定：语义层变异的 name 必须以校验器 code 开头（如 {@code "S-6 ..."}），
+ * {@code PlanRuleCoverageTest} 靠这个前缀证明「契约清单里的每条规则都有能触发它的样例」。
  */
 public final class PlanMutants {
 
@@ -103,8 +106,14 @@ public final class PlanMutants {
         list.add(m("S-2 itemOrder 跳号", r -> at(r, "/days/0/items/1").put("itemOrder", 5)));
 
         // ---- S-3 目的地一致性 ----
-        list.add(m("S-3 destinations[0] 不等于 destination", r ->
-                array(r, "/basic/destinations").set(0, MAPPER.getNodeFactory().textNode("乐山"))));
+        // 注意：不能只把 destinations[0] 改成另一个已有城市（会与 uniqueItems 撞成重复项，
+        // 被 Schema 层先行拦下，看起来「拒了」其实没测到 S-3）。这里交换 0 与 1。
+        list.add(m("S-3 destinations[0] 不等于 destination", r -> {
+            ArrayNode destinations = array(r, "/basic/destinations");
+            JsonNode main = destinations.get(0);
+            destinations.set(0, destinations.get(1));
+            destinations.set(1, main);
+        }));
         list.add(m("S-3 当天城市不在 destinations", r -> at(r, "/days/0").put("city", "重庆")));
         list.add(m("S-3 destination 为 null 但 destinations 非空", r -> at(r, "/basic").putNull("destination")));
 
@@ -114,6 +123,12 @@ public final class PlanMutants {
         list.add(m("S-5 自报数量不符", r -> r.put("unverifiedFieldCount", 3)));
         list.add(m("Q-12 日期与序号错位", r -> at(r, "/days/0").put("date", "2026-11-21")));
         list.add(m("Q-12 endDate 早于 startDate", r -> at(r, "/basic").put("endDate", "2026-11-01")));
+
+        // ---- S-6 跨城段天序号（BUG-014 补的样例）----
+        // 生成侧的真实失败长这样：模型把「第 3 天去西宁」写成 fromDayIndex=3、toDayIndex=3，
+        // 校验器按 from < to 拒绝，而此前没有任何一条样例覆盖这个方向，提示词里也没写过。
+        list.add(m("S-6 跨城段 fromDayIndex 不小于 toDayIndex",
+                r -> at(r, "/days/1/transportSegments/0").put("toDayIndex", 1)));
 
         return list;
     }

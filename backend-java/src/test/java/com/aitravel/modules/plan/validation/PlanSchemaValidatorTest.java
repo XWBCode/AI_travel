@@ -46,10 +46,11 @@ class PlanSchemaValidatorTest {
     }
 
     @Test
-    @DisplayName("50 组畸形样例必须全部被拒绝")
+    @DisplayName("畸形样例（≥50 组）必须全部被拒绝")
     void allFiftyMalformedDraftsAreRejected() {
         List<PlanMutants.Mutant> mutants = PlanMutants.all();
-        assertEquals(50, mutants.size(), "畸形样例数量必须是 50（验收口径）");
+        assertTrue(mutants.size() >= 50,
+                () -> "畸形样例数量必须达到 02 §6 的 50 组，当前 " + mutants.size());
 
         List<String> escaped = new ArrayList<>();
         for (PlanMutants.Mutant mutant : mutants) {

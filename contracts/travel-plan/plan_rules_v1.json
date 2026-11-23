@@ -1,0 +1,196 @@
+{
+  "version": "1.0",
+  "section_title": "## 硬性规则（违反任何一条，整份输出会被校验器拒绝，业务表写入 0 条）",
+  "note": "跨字段硬约束的唯一来源。Java 校验器按 code 实现（PlanSchemaValidator），Python 提示词的「硬性规则」整段由本文件渲染（backend-ai/app/plan/rules.py），两侧都从这里读，任何一侧都不得手写副本。新增规则必须同时改三处：本文件、校验器代码、PlanMutants 里以 code 开头的反例；CI 会拦下只改一处的提交。",
+  "source": "docs/design/08-TravelPlan-v1-冻结决议.md §4（S-1~S-6）、Q-01/Q-05/Q-11/Q-12；docs/design/05-接口与AI输出契约.md §2.1（FactField 七键与自由文本）",
+  "rules": [
+    {
+      "id": "F-1",
+      "number": "1",
+      "codes": [],
+      "enforced_by": "schema",
+      "why": "FactField 七键在 Schema 里是 additionalProperties=false + required 七项，少一个键直接判结构违规（BUG-008 的根因就是提示词没写全 fetchedAt/expiresAt）",
+      "prompt_lines": [
+        "事实字段一律用上面七键形态，**value 必须为 null**，绝不能填任何数字。",
+        "适用：items[].duration / openHours / ticketPrice、transportSegments[].duration / distance、",
+        "accommodation.priceRange、budget.total、budget.items[].amount。",
+        "**七个键必须全部出现，一个都不能省。** 尤其注意 `fetchedAt` 与 `expiresAt`：",
+        "没有取值时也要显式写成 `null`，不能因为它是空就整键省略——少一个键，整份计划会被校验器作废。",
+        "输出前请对上面每一个适用位置逐个自查「七个键是否齐全」。"
+      ]
+    },
+    {
+      "id": "F-2",
+      "number": "2",
+      "codes": [],
+      "enforced_by": "schema",
+      "why": "Q-10 / Q-11：planId 由 Java 落库回填、AI 只允许输出 DRAFT；days[].city 必须落在 destinations 里由 S-3 兜底",
+      "prompt_lines": [
+        "固定值：planId 必须为 null；status 必须为 \"DRAFT\"；schemaVersion 必须为 \"1.0\"；",
+        "用户给的是**省份/大区**（如云南、川西、江浙）时，basic.destination 可以写该名称，",
+        "但 days[].city 只能用计划里真实停留的具体城市，并且这些城市必须同时出现在 basic.destinations 里",
+        "（例：destination=\"云南\"，destinations=[\"云南\",\"昆明\",\"大理\"]，days[].city 取昆明/大理）。",
+        "校验器要求 days[].city ∈ destinations，漏列会被整份拒绝。"
+      ]
+    },
+    {
+      "id": "S-3",
+      "number": "2",
+      "codes": ["S-3"],
+      "enforced_by": "validator",
+      "why": "Q-01：destinations[0] 是主目的地，必须与 destination 逐字一致；2026-11-23 实跑发现模型会写成「第一个停留城市」，故改为加粗的硬性要求",
+      "prompt_lines": [
+        "还要求 **destinations[0] 必须与 destination 逐字相同**（不是「差不多」，不是「第一个城市」）。"
+      ]
+    },
+    {
+      "id": "F-3",
+      "number": "2",
+      "codes": [],
+      "enforced_by": "schema",
+      "why": "currency 固定 CNY；attractionId 属于 M2 才接的景点库，L0 必须为 null",
+      "prompt_lines": [
+        "budget.currency 必须为 \"CNY\"；attractionId 必须为 null。"
+      ]
+    },
+    {
+      "id": "F-4",
+      "number": "2",
+      "codes": [],
+      "enforced_by": "schema",
+      "why": "五分类是 Schema 枚举；Java 的 checkBudgetCategory 再兜一层，但它抛的是通用 SCHEMA_VIOLATION，没有独立 code，所以本段绑不到校验器规则上",
+      "prompt_lines": [
+        "budget.items[].category 只能取这五个之一：TRANSPORT、ACCOMMODATION、FOOD、TICKET、OTHER",
+        "（购物、娱乐、门票以外的一律归 OTHER，不得自造 SHOPPING、ENTERTAINMENT 等值）。"
+      ]
+    },
+    {
+      "id": "F-5",
+      "number": "2",
+      "codes": [],
+      "enforced_by": "schema",
+      "why": "city / theme / areaName 的 minLength=1：模型在「当天不安排住宿」时会写 null，整份被拒",
+      "prompt_lines": [
+        "days[].city、days[].theme、accommodation.areaName 必须是**非空字符串**，",
+        "即使当天没有安排住宿也要给 areaName 一个建议区域，不能写 null。"
+      ]
+    },
+    {
+      "id": "T-1",
+      "number": "3",
+      "codes": [],
+      "enforced_by": "schema",
+      "why": "Schema 的 freeText 只覆盖被 $ref 引用的字段，title/suggestion 等由 Python scan_free_text 与 Java 文本扫描兜底，三处同一口径",
+      "prompt_lines": [
+        "自由文本禁止「数字 + 单位」。不能写 30元、25℃、90分钟、2小时、5公里、G1234次、2号线。",
+        "适用：title、note、advice、suggestion、risks、aiNote、budget.note、label。",
+        "「3天」「第1天」这类用户自己给的天数不算实时信息，可以写。"
+      ]
+    },
+    {
+      "id": "S-4",
+      "number": "4",
+      "codes": ["S-4"],
+      "enforced_by": "validator",
+      "why": "Q-05：missingFields 是固定十词表，且与 basic 六个字段的 null 状态双向一致（有值列入也被拒）",
+      "prompt_lines": [
+        "不知道就写 null，并把字段名放进 basic.missingFields。取值只能是这十个：",
+        "originCity、destination、startDate、endDate、days、travelers、budget、interests、transport、accommodation。",
+        "这条规则**双向生效**：basic 里为 null 的必须列入，有值的绝不能列入。"
+      ]
+    },
+    {
+      "id": "T-2",
+      "number": "4.1",
+      "codes": [],
+      "enforced_by": "prompt",
+      "why": "travelers 是全流程最高频的假填写点，模型习惯性补 1；与 S-4 联动，填了数字又留 missingFields 会被整份拒绝",
+      "prompt_lines": [
+        "basic.travelers 是全流程最高频的失败点，按字面执行：",
+        "只有当用户原话里出现明确的人数线索时才填数字，线索仅限这几类——",
+        "「一个人 / 独自 / 我自己」「两个人 / 我俩 / 情侣」「X 个人 / 我们 X 个」「一家 X 口」「带父母 / 带孩子」。",
+        "除此之外（例如「去重庆玩三天，喜欢火锅和夜景」这种只有目的地和天数的），一律视为**未知**：",
+        "basic.travelers 必须写 null，并且必须把 \"travelers\" 放进 basic.missingFields 等着问用户。",
+        "**反例（校验器会整份拒绝，绝对不要这样输出）**：travelers 填了 1，missingFields 里又留着 travelers。"
+      ]
+    },
+    {
+      "id": "S-5",
+      "number": "5",
+      "codes": ["S-5"],
+      "enforced_by": "validator",
+      "why": "unverifiedFieldCount 由服务端重算覆盖，模型自报值从不采信；写进提示词只是为了让它别在这上面浪费推理",
+      "prompt_lines": [
+        "unverifiedFieldCount 是派生统计量，由服务端按实际七键对象数量重算并覆盖，固定填 0 即可。",
+        "不要试图自行统计——模型数数不可靠，这一项从来不参与你的判断。"
+      ]
+    },
+    {
+      "id": "S-1",
+      "number": "6",
+      "codes": ["S-1", "S-2"],
+      "enforced_by": "validator",
+      "why": "S-1（dayIndex 连续 + basic.days 等于实际长度）与 S-2（itemOrder 每天从 1 连续）语义上是一条「序号别乱」，合成一段写，避免提示词里出现两条几乎相同的句子",
+      "prompt_lines": [
+        "dayIndex 从 1 开始连续递增；items[].itemOrder 每天从 1 开始连续递增（1、2、3…，中间不能跳号）。",
+        "**basic.days 必须等于 days 数组的实际长度**——按你真正写出来的天数填，不是按用户口头说的天数填。"
+      ]
+    },
+    {
+      "id": "S-6",
+      "number": "7",
+      "codes": ["S-6"],
+      "enforced_by": "validator",
+      "why": "BUG-014 的根因：校验器要求跨城段 fromDayIndex < toDayIndex，提示词从没提过，模型把「第 3 天去西宁」写成 3 → 3 就被整份拒绝。这段文字是实测 3/3 修好的版本，改动需重新实跑",
+      "prompt_lines": [
+        "transportSegments 二选一（都放在对应那一天的数组里，不是顶层）：",
+        "- 同一天内两点之间用 \"INTRA_DAY\"，填 fromItemOrder / toItemOrder，其余四个位置字段为 null；",
+        "- 跨城市移动用 \"INTER_CITY\"，填 fromDayIndex / toDayIndex / fromCity / toCity，其余为 null。",
+        "**跨城段必须 fromDayIndex < toDayIndex**：移动发生在「第 X 天结束 → 第 Y 天开始」之间，",
+        "X 与 Y 相同表示同一天，那不是跨城，请改写成 INTRA_DAY 或者干脆不写这一段。"
+      ]
+    },
+    {
+      "id": "B-1",
+      "number": "8",
+      "codes": [],
+      "enforced_by": "prompt",
+      "why": "总纲 8.1 不得编造：没有机器可判定的口径，靠自由文本扫描部分兜底（数字+单位），其余靠人工抽检",
+      "prompt_lines": [
+        "不得编造具体景点、班次、价格、开放时间。不确定就用泛化表述，例如「老城历史街区漫步」",
+        "「本地博物馆或文化场馆」。"
+      ]
+    },
+    {
+      "id": "B-2",
+      "number": "9",
+      "codes": [],
+      "enforced_by": "prompt",
+      "why": "Q-03：用户没提的偏好不得臆造，Source 用 USER_DEFAULT 表达「按默认值处理」而非「未知」",
+      "prompt_lines": [
+        "用户的需求里没提到的偏好不要臆造：interests 为空就输出 []，并把对应 Source 设为 USER_DEFAULT。"
+      ]
+    },
+    {
+      "id": "B-3",
+      "number": "10",
+      "codes": [],
+      "enforced_by": "prompt",
+      "why": "截断是流式输出最常见的失败形态，截断后连 Schema 都过不了，只能靠提示词约束 + Python 侧 JSON.parse 兜底",
+      "prompt_lines": [
+        "输出必须是完整、可被 JSON.parse 一次性解析的单个对象，不得截断。"
+      ]
+    },
+    {
+      "id": "Q-12",
+      "number": "11",
+      "codes": ["Q-12"],
+      "enforced_by": "validator",
+      "why": "2026-11-23 由「提示词/校验器同源」检查发现的一处漏写：校验器按 Q-12 拒绝「日期与天数矛盾」，提示词此前从未提过（与 BUG-014 同一类缺陷）。本段为新增，需随下一次实跑复验",
+      "prompt_lines": [
+        "日期必须自洽：给了 basic.startDate 之后，days[i].date 必须正好是 startDate 往后第 i 天（第 1 天就是 startDate 当天），",
+        "basic.endDate 必须等于 startDate 加上「天数 - 1」。日期与 days 长度对不上会被整份拒绝。"
+      ]
+    }
+  ]
+}
