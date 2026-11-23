@@ -25,3 +25,14 @@ llm:
 
 rag:
   enabled: false
+
+# ===== 天气（M3-1）=====
+# provider 默认 none：Open-Meteo 免费端点禁商用且数据需署名（CC BY 4.0）。
+# 只有开发/演示环境显式打开，生产必须等 D-03 定案后换成商用数据源。
+# 打开方式：环境变量 WEATHER_PROVIDER=open-meteo
+weather:
+  provider: none            # none | open-meteo
+  timeout_seconds: 3.0      # 外部 API 必须设超时，不设等于把可用性交给别人
+  connect_timeout_seconds: 2.0
+  cache_ttl_minutes: 30
+

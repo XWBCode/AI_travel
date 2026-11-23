@@ -51,12 +51,31 @@ class LLMSettings:
 
 
 @dataclass
+class WeatherSettings:
+    """天气数据源配置。
+
+    `provider` 默认 **none**：免费端点禁商用（Open-Meteo 条款），生产不能默默打开。
+    开发/演示环境显式设 `WEATHER_PROVIDER=open-meteo` 才生效。
+    """
+
+    provider: str = "none"            # none | open-meteo
+    timeout_seconds: float = 3.0
+    connect_timeout_seconds: float = 2.0
+    cache_ttl_minutes: int = 30
+
+    @property
+    def enabled(self) -> bool:
+        return self.provider not in ("", "none", None)
+
+
+@dataclass
 class Settings:
     app_name: str = "ai-travel-ai-service"
     version: str = "0.1.0"
     host: str = "0.0.0.0"
     port: int = 8000
     llm: LLMSettings = field(default_factory=LLMSettings)
+    weather: WeatherSettings = field(default_factory=WeatherSettings)
 
     @classmethod
     def load(cls) -> "Settings":
@@ -65,6 +84,7 @@ class Settings:
         server = raw.get("server", {}) or {}
         llm_raw = raw.get("llm", {}) or {}
         app_raw = raw.get("app", {}) or {}
+        weather_raw = raw.get("weather", {}) or {}
 
         llm = LLMSettings(
             provider=str(_env("LLM_PROVIDER", llm_raw.get("provider", "mock"))),
@@ -77,12 +97,22 @@ class Settings:
             json_mode=_env_bool("LLM_JSON_MODE", bool(llm_raw.get("json_mode", True))),
         )
 
+        weather = WeatherSettings(
+            provider=str(_env("WEATHER_PROVIDER", weather_raw.get("provider", "none"))),
+            timeout_seconds=float(_env("WEATHER_TIMEOUT_SECONDS", weather_raw.get("timeout_seconds", 3.0))),
+            connect_timeout_seconds=float(
+                _env("WEATHER_CONNECT_TIMEOUT_SECONDS", weather_raw.get("connect_timeout_seconds", 2.0))
+            ),
+            cache_ttl_minutes=int(_env("WEATHER_CACHE_TTL_MINUTES", weather_raw.get("cache_ttl_minutes", 30))),
+        )
+
         return cls(
             app_name=str(app_raw.get("name", "ai-travel-ai-service")),
             version=str(app_raw.get("version", "0.1.0")),
             host=str(_env("AI_SERVICE_HOST", server.get("host", "0.0.0.0"))),
             port=int(_env("AI_SERVICE_PORT", server.get("port", 8000))),
             llm=llm,
+            weather=weather,
         )
 
 

@@ -13,7 +13,7 @@ from app import __version__
 from app.config import settings
 from app.llm.provider import LLMError, build_provider
 from app.plan.contract import DRAFT_SCHEMA_FILE, load_schema
-from app.routers import chat, health, plan
+from app.routers import chat, health, plan, weather
 
 logging.basicConfig(
     level=logging.INFO,
@@ -55,6 +55,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(chat.router)
     app.include_router(plan.router)
+    app.include_router(weather.router)
 
     @app.exception_handler(LLMError)
     async def handle_llm_error(request: Request, exc: LLMError):
