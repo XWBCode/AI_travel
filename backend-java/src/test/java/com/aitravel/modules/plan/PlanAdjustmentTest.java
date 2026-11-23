@@ -25,6 +25,7 @@ import org.springframework.test.context.ActiveProfiles;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -32,6 +33,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -249,7 +252,77 @@ class PlanAdjustmentTest {
         assertTrue(summary != null && summary.startsWith("确认调整："), "实际摘要：" + summary);
     }
 
+    // ---------------- 幂等（PLAN_ADJUST） ----------------
+
+    @Test
+    @DisplayName("同一 requestId 连点两次：只落一条建议，第二次回放同一个 adjustmentId")
+    void sameRequestIdReplaysOneProposal() {
+        long planId = startedPlan();
+        List<Long> ids = itemIds(planId);
+        stubAdjust("补备注", updateNoteOps(ids.get(0)));
+        String rid = "adj-" + UUID.randomUUID();
+
+        PlanAdjustmentVO first = adjustmentService.propose(planId, TEST_USER, "第一项补个备注", "", rid);
+        PlanAdjustmentVO second = adjustmentService.propose(planId, TEST_USER, "第一项补个备注", "", rid);
+
+        assertEquals(first.getAdjustmentId(), second.getAdjustmentId(), "重试必须回放同一条建议");
+        assertEquals(1, count("select count(*) from t_plan_adjustment where plan_id = ?", planId),
+                "用户连点两次不该产生两条待确认建议");
+        // 真正的证明：模型只被问了一次。落库条数对上但模型跑两次，说明幂等键占了又没拦住调用
+        verify(aiServiceClient, times(1)).adjustPlan(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("同一 requestId 换了调整内容：30112，不能悄悄换一份建议回放")
+    void sameRequestIdDifferentInstructionConflicts() {
+        long planId = startedPlan();
+        List<Long> ids = itemIds(planId);
+        stubAdjust("补备注", updateNoteOps(ids.get(0)));
+        String rid = "adj-" + UUID.randomUUID();
+
+        adjustmentService.propose(planId, TEST_USER, "第一项补个备注", "", rid);
+
+        BizException e = assertThrows(BizException.class,
+                () -> adjustmentService.propose(planId, TEST_USER, "把第二项删掉", "", rid));
+        assertEquals(ErrorCode.IDEMPOTENCY_CONFLICT.getCode(), e.getErrorCode().getCode());
+    }
+
+    @Test
+    @DisplayName("同一 requestId 用在不同计划上：30112，幂等键不能跨计划复用")
+    void sameRequestIdAcrossPlansConflicts() {
+        long planA = startedPlan();
+        long planB = startedPlan();
+        stubAdjust("补备注", updateNoteOps(itemIds(planA).get(0)));
+        String rid = "adj-" + UUID.randomUUID();
+
+        adjustmentService.propose(planA, TEST_USER, "补个备注", "", rid);
+
+        BizException e = assertThrows(BizException.class,
+                () -> adjustmentService.propose(planB, TEST_USER, "补个备注", "", rid));
+        assertEquals(ErrorCode.IDEMPOTENCY_CONFLICT.getCode(), e.getErrorCode().getCode());
+    }
+
+    @Test
+    @DisplayName("不传 requestId：每次都是新建议，不强制没升级的客户端")
+    void withoutRequestIdCreatesNewEveryTime() {
+        long planId = startedPlan();
+        List<Long> ids = itemIds(planId);
+        stubAdjust("补备注", updateNoteOps(ids.get(0)));
+
+        PlanAdjustmentVO a = adjustmentService.propose(planId, TEST_USER, "第一项补个备注", "");
+        PlanAdjustmentVO b = adjustmentService.propose(planId, TEST_USER, "第一项补个备注", "");
+
+        assertNotEquals(a.getAdjustmentId(), b.getAdjustmentId());
+        assertEquals(2, count("select count(*) from t_plan_adjustment where plan_id = ?", planId));
+    }
+
     // ---------------- helpers ----------------
+
+    private String updateNoteOps(long itemId) {
+        return """
+                [{"op":"UPDATE_ITEM","itemId":"%d","changes":[{"field":"note","after":"从北门进更顺"}]}]
+                """.formatted(itemId);
+    }
 
     private long generatePlan() {
         JsonNode draft = PlanMutants.validDraft();

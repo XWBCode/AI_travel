@@ -9,7 +9,7 @@
 |---|---|---|---|
 | Mock | `mock` | 打通链路、跑 UI、回归测试 | 响应带 `[MOCK]` 前缀，`real=false`，绝不冒充真实模型 |
 | DeepSeek 直连 | `openai_compatible` | 真实模型验收 | 3 天计划约 **14s**，按量付费，余额为 0 时返回 402 |
-| 交融网关 | `openai_compatible` | 公司额度、内网模型池 | 3 天计划 **85–100s**（比直连慢一个量级），需调大读超时 |
+| 交融网关 | `openai_compatible` | 公司额度、内网模型池 | 3 天计划 **60–130s**、7 天 **160–210s**（比直连慢一个量级），必须调大读超时 |
 
 三者共用同一套 `OpenAICompatibleProvider`，切换只是换 `.env` 里三行。
 
@@ -17,7 +17,7 @@
 
 ```
 LLM_BASE_URL=https://c4ai.ccccltd.cn/api/compatible/v1
-LLM_MODEL=jiaorong-deepseek-v4-flash
+LLM_MODEL=jiaorong-deepseek-v4-pro
 ```
 
 **先验 key，再改配置。** 网关的失败形态是 `HTTP 200` + body 里塞错误，很容易被误读成「模型返回空内容」：
@@ -47,15 +47,29 @@ curl -s https://c4ai.ccccltd.cn/api/compatible/v1/models \
 
 ### 2.2 模型选择
 
-网关上有 `jiaorong-deepseek-v4-pro` / `-v4-flash` / `jiaorong-ds-v3` / `qwen3.5` / `glm-5` 等 42 个。
-计划生成要「长 JSON + 严格按契约填字段」，实测：
+网关上有 `jiaorong-deepseek-v4-pro` / `-v4.1-flash` / `jiaorong-qwen3.5-397b-a17b` / `jiaorong-glm-5.2` /
+`jiaorong-kimi-k2.6` 等 42 个。计划生成要「长 JSON + 严格按契约填字段」，五个旗舰档实测（同一批 3 条输入）：
 
-| 模型 | 3 天计划耗时 | JSON 模式 | 结果 |
-|---|---|---|---|
-| `jiaorong-deepseek-v4-pro` | 97s | 支持 | 通过校验 |
-| `jiaorong-deepseek-v4-flash` | 85s | 支持 | 通过校验 |
+| 模型 | 合规 | P50 | 最长 | 平均项数 | 备注 |
+|---|---|---|---|---|---|
+| **`jiaorong-deepseek-v4-pro`** | **3/3** | 90s | 166s | 12.3 | **当前上线**，内容最全 |
+| `jiaorong-qwen3.5-397b-a17b` | 2/3 | 164s | 207s | 11.0 | 最慢；travelers 自相矛盾 |
+| `jiaorong-glm-5.2` | 2/3 | 60s | 62s | 9.3 | `endTime` 输出整数 16 |
+| `jiaorong-kimi-k2.6` | 3/3 | **33s** | 47s | 9.0 | 最快、内容最具体；真实链路 13/20 |
+| `jiaorong-deepseek-v4-flash` | 3/3 | 111s | 136s | 9.0 | 真实链路 20/20，内容最模板 |
 
-选 **flash**：两者都过校验，耗时差 12s，flash 便宜。
+**为什么选 pro（2026-11-23 用户决定「不用管价格，用最好的」）**：
+合规最稳（基准 3/3，且把 kimi 挂掉的 7 条边界样本全部救回，累计 12/12），
+7 天行程能排到 20 项并覆盖 4 城。代价是慢（P50 90s、最长 171s），
+所以 §3 的三个超时必须留足（Java 300s / Python 240s）。
+
+**kimi-k2.6 是备选**：快 3 倍且愿意写具体景点（金沙遗址、宽窄巷子），
+但它对 `missingFields` 双向规则不稳（20 条里挂 7 条，全是「没说人数却填了 travelers=1」）。
+已加固 `prompts.py` 规则 4.1；等接入景点主数据后可以重新评估它。
+
+**一条经验**：比「哪个模型分高」更重要的是**口径对齐**。评测脚本必须复刻 `generator.py` 的
+S-5 重算（`unverifiedFieldCount` 服务端覆盖），否则所有模型都会被报「声明 0，实际 48」，
+结论完全反过来。文档 §8.1 记了这次踩坑。
 
 ## 3. 超时必须一起调
 

@@ -60,6 +60,9 @@ class IdempotencyDbTest {
     private JdbcTemplate jdbc;
 
     @Autowired
+    private com.aitravel.modules.idempotency.job.IdempotencyCleanupJob cleanupJob;
+
+    @Autowired
     private ObjectMapper objectMapper;
 
     @MockBean
@@ -211,5 +214,51 @@ class IdempotencyDbTest {
         Integer other = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM t_travel_plan WHERE user_id=?", Integer.class, OTHER_USER);
         assertEquals(1, other, "幂等域必须按用户隔离，不能把 B 的请求当成 A 的重复");
+    }
+
+    @Test
+    @DisplayName("过期清理：只删保留期外的终态行，PROCESSING 与近期记录一条不动")
+    void purgeRemovesOnlyOldTerminalRows() {
+        insertIdem("old-success", "SUCCESS", 31);
+        insertIdem("old-processing", "PROCESSING", 31);
+        insertIdem("fresh-success", "SUCCESS", 1);
+
+        int deleted = cleanupJob.purge(30);
+
+        assertEquals(1, deleted, "两条 31 天前的记录里只有 SUCCESS 该被删");
+        assertEquals(0, countIdem("old-success"));
+        assertEquals(1, countIdem("old-processing"), "卡死的 PROCESSING 留着：删掉会让重复请求重新执行");
+        assertEquals(1, countIdem("fresh-success"), "保留期内的一条都不能动");
+    }
+
+    @Test
+    @DisplayName("清理是真删：逻辑删除会留下唯一键占位，等于没清")
+    void purgeIsPhysicalNotLogical() {
+        insertIdem("old-success", "SUCCESS", 31);
+        cleanupJob.purge(30);
+
+        // 逻辑删除的行会以 deleted=1 留在表里，这里连这行都不该存在
+        Integer rows = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM t_idempotency WHERE user_id=? AND request_id=?", Integer.class,
+                USER, "old-success");
+        assertEquals(0, rows == null ? 0 : rows);
+
+        // 唯一键已释放：同一个 ID 可以重新写入，说明清理对索引确实生效了
+        assertEquals(1, insertIdem("old-success", "SUCCESS", 0));
+    }
+
+    private int insertIdem(String requestId, String status, int daysAgo) {
+        long id = System.nanoTime();
+        return jdbc.update("INSERT INTO t_idempotency "
+                        + "(id, user_id, request_id, action, request_hash, status, create_time, update_time, deleted) "
+                        + "VALUES (?, ?, ?, 'PLAN_GENERATE', REPEAT('a', 64), ?, "
+                        + "DATE_SUB(NOW(), INTERVAL ? DAY), DATE_SUB(NOW(), INTERVAL ? DAY), 0)",
+                id, USER, requestId, status, daysAgo, daysAgo);
+    }
+
+    private int countIdem(String requestId) {
+        Integer n = jdbc.queryForObject("SELECT COUNT(*) FROM t_idempotency WHERE user_id=? AND request_id=?",
+                Integer.class, USER, requestId);
+        return n == null ? 0 : n;
     }
 }

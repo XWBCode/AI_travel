@@ -3,6 +3,7 @@ package com.aitravel.modules.plan.service;
 import com.aitravel.common.api.ErrorCode;
 import com.aitravel.common.exception.BizException;
 import com.aitravel.modules.chat.service.AiServiceClient;
+import com.aitravel.modules.idempotency.service.IdempotencyService;
 import com.aitravel.modules.notification.service.NotificationService;
 import com.aitravel.modules.plan.dto.PlanAdjustmentVO;
 import com.aitravel.modules.plan.entity.PlanAdjustment;
@@ -75,6 +76,8 @@ public class PlanAdjustmentService {
     private final AiServiceClient aiServiceClient;
     private final ObjectMapper objectMapper;
     private final PlatformTransactionManager txManager;
+    /** PLAN_ADJUST 幂等（与生成共用 t_idempotency，action 区分） */
+    private final IdempotencyService idempotencyService;
     /** 确认后记一条「行程已调整」；生成建议本身不通知（计划没变） */
     private final NotificationService notificationService;
 
@@ -85,6 +88,72 @@ public class PlanAdjustmentService {
      * 只有最后落库那一条 insert，本身就是一个原子操作。
      */
     public PlanAdjustmentVO propose(Long planId, Long userId, String instruction, String traceId) {
+        return propose(planId, userId, instruction, traceId, null);
+    }
+
+    /**
+     * 带幂等键的生成建议（PLAN_ADJUST）。
+     * <p>
+     * 为什么调整也要幂等：用户在「等模型 60 秒」的过程中很容易再点一次，
+     * 两次请求会各自落一条 PENDING 建议。用户确认第一条之后，第二条的 base_version 已经过期，
+     * 点下去必然失败，体验上就是「怎么点了没反应」。
+     * <p>
+     * 语义与生成一致：同一个 (userId, clientRequestId) 只真正执行一次，重复提交回放首次结果；
+     * 同一 ID 换了内容返回 30112，还在处理中返回 30113。
+     */
+    public PlanAdjustmentVO propose(Long planId, Long userId, String instruction, String traceId,
+                                    String clientRequestId) {
+        if (clientRequestId == null || clientRequestId.isBlank()) {
+            return proposeOnce(planId, userId, instruction, traceId);
+        }
+        String requestId = clientRequestId.trim();
+        if (requestId.length() > 64) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "幂等键不得超过 64 字符");
+        }
+        // 哈希要包含 planId：同一个 requestId 换了一份计划来重放，属于内容不同，必须拒
+        String hash = IdempotencyService.hashOf(IdempotencyService.ACTION_PLAN_ADJUST,
+                planId + "\n" + (instruction == null ? "" : instruction.trim()));
+
+        var decision = idempotencyService.begin(userId, requestId,
+                IdempotencyService.ACTION_PLAN_ADJUST, hash);
+        if (!decision.first()) {
+            // 已成功：回放首次那条建议的当前状态（可能已被确认或拒绝，所以重新读）
+            String ref = decision.record().getResultRef();
+            log.info("调整幂等回放 requestId={} adjustmentId={}", requestId, ref);
+            return replayAdjustment(planId, userId, ref);
+        }
+
+        try {
+            PlanAdjustmentVO vo = proposeOnce(planId, userId, instruction, traceId);
+            idempotencyService.succeed(decision.record().getId(), vo.getAdjustmentId());
+            return vo;
+        } catch (RuntimeException e) {
+            int code = e instanceof BizException biz
+                    ? biz.getErrorCode().getCode()
+                    : ErrorCode.INTERNAL_ERROR.getCode();
+            idempotencyService.fail(decision.record().getId(), code);
+            throw e;
+        }
+    }
+
+    /** 回放：只认属于本人的建议，越权或已不存在都按「不存在」处理，避免成为探测他人数据的接口 */
+    private PlanAdjustmentVO replayAdjustment(Long planId, Long userId, String adjustmentId) {
+        Long id;
+        try {
+            id = Long.valueOf(adjustmentId);
+        } catch (NumberFormatException e) {
+            throw new BizException(ErrorCode.NOT_FOUND, "调整建议不存在");
+        }
+        PlanAdjustment adjustment = adjustmentMapper.selectById(id);
+        if (adjustment == null || !adjustment.getPlanId().equals(planId)
+                || !adjustment.getUserId().equals(userId)) {
+            throw new BizException(ErrorCode.NOT_FOUND, "调整建议不存在");
+        }
+        TravelPlan plan = store.loadOwned(planId, userId);
+        return toVO(adjustment, plan.getVersion());
+    }
+
+    private PlanAdjustmentVO proposeOnce(Long planId, Long userId, String instruction, String traceId) {
         String text = instruction == null ? "" : instruction.trim();
         if (text.isEmpty()) {
             throw new BizException(ErrorCode.BAD_REQUEST, "请先说要调整什么，比如「下午不去了」");

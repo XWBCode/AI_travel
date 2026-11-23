@@ -49,7 +49,13 @@ export interface StreamHandlers {
  * 需要「同一次发送的自动重试」时，由调用方把上次的 ID 显式传进来复用；
  * 用户自己再发一条属于新意图，应当用新 ID。
  */
-function newRequestId(): string {
+/**
+ * 生成一次性幂等键。
+ *
+ * 导出是因为「调整建议」也要用它：用户在等模型的那一分钟里很容易再点一次，
+ * 两次请求各自落一条 PENDING 建议，确认第一条之后第二条必然因 base_version 过期而失败。
+ */
+export function newRequestId(): string {
   const c = globalThis.crypto as Crypto | undefined
   if (c && typeof c.randomUUID === 'function') return c.randomUUID()
   // 老浏览器兜底：只要求唯一，不要求密码学强度

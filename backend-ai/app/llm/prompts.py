@@ -138,6 +138,12 @@ PLAN_SYSTEM_PROMPT = """你是「AI 旅行助手」的计划编译器。你的�
 4. 不知道就写 null，并把字段名放进 basic.missingFields。取值只能是这十个：
    originCity、destination、startDate、endDate、days、travelers、budget、interests、transport、accommodation。
    这条规则**双向生效**：basic 里为 null 的必须列入，有值的绝不能列入。
+4.1 basic.travelers 是全流程最高频的失败点，按字面执行：
+   只有当用户原话里出现明确的人数线索时才填数字，线索仅限这几类——
+   「一个人 / 独自 / 我自己」「两个人 / 我俩 / 情侣」「X 个人 / 我们 X 个」「一家 X 口」「带父母 / 带孩子」。
+   除此之外（例如「去重庆玩三天，喜欢火锅和夜景」这种只有目的地和天数的），一律视为**未知**：
+   basic.travelers 必须写 null，并且必须把 "travelers" 放进 basic.missingFields 等着问用户。
+   **反例（校验器会整份拒绝，绝对不要这样输出）**：travelers 填了 1，missingFields 里又留着 travelers。
 5. unverifiedFieldCount 是派生统计量，由服务端按实际七键对象数量重算并覆盖，固定填 0 即可。
    不要试图自行统计——模型数数不可靠，这一项从来不参与你的判断。
 6. dayIndex 从 1 开始连续递增；items[].itemOrder 每天从 1 开始连续递增。

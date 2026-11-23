@@ -200,7 +200,7 @@ public class PlanController {
                                                       @Valid @RequestBody AdjustmentRequest req,
                                                       HttpServletRequest http) {
         return Result.ok(adjustmentService.propose(id, CurrentUser.requireUserId(), req.getInstruction(),
-                http.getHeader("X-Trace-Id")));
+                http.getHeader("X-Trace-Id"), req.getClientRequestId()));
     }
 
     /** 最近若干条调整建议（含已确认/已拒绝），供用户回看 */
@@ -247,6 +247,15 @@ public class PlanController {
         @NotBlank(message = "请先说要调整什么")
         @Size(max = 500, message = "描述不得超过 500 字")
         private String instruction;
+
+        /**
+         * 幂等键（可选）。前端每次「发出一条调整要求」生成一个，重试时复用同一个。
+         * <p>
+         * 不传就是不做幂等：一部分客户端/脚本不关心重复提交，强制要求会让它们全部 400。
+         * 传了就必须一路到底——同一个 ID 用在不同内容上会被 30112 拒掉。
+         */
+        @Size(max = 64, message = "幂等键不得超过 64 字符")
+        private String clientRequestId;
     }
 
     @Data

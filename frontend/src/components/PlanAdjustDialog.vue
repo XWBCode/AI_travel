@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { plansApi } from '@/api'
+import { newRequestId } from '@/api/stream'
 import type { PlanAdjustmentVO, TravelPlan } from '@/api/types'
 import { canConfirm, opsSummary, renderOps, staleHint } from '@/utils/adjustment'
 
@@ -27,6 +28,17 @@ const phase = ref<'input' | 'loading' | 'preview'>('input')
 const confirming = ref(false)
 const elapsed = ref(0)
 let ticker: number | undefined
+
+/**
+ * 幂等键的生命周期 = 「一次用户意图」。
+ *
+ * 模型要跑一分钟，超时/断网时用户点第二次是最自然的动作。如果每次都换新 ID，
+ * 后端会当成两次新请求，落下两条 PENDING 建议；用户确认第一条后，第二条的
+ * base_version 已经过期，点下去必然失败，表现就是「怎么点了没反应」。
+ * 所以：同一句话重试复用同一个 ID，换了内容或拿到结果后作废。
+ */
+let pendingRequestId: string | null = null
+let pendingText: string | null = null
 
 const planVersion = computed(() => props.plan?.version ?? 0)
 const rendered = computed(() => renderOps(proposal.value?.ops))
@@ -56,11 +68,19 @@ async function generate(): Promise<void> {
   if (!props.plan || !text || phase.value === 'loading') return
   phase.value = 'loading'
   startTicker()
+  if (!pendingRequestId || pendingText !== text) {
+    pendingRequestId = newRequestId()
+    pendingText = text
+  }
   try {
-    proposal.value = await plansApi.proposeAdjustment(props.plan.planId, text)
+    proposal.value = await plansApi.proposeAdjustment(props.plan.planId, text, pendingRequestId)
+    // 拿到了就作废：下一次「换一句再改」必须是一条全新的意图
+    pendingRequestId = null
+    pendingText = null
     phase.value = 'preview'
   } catch {
     // 30109 / 30110 的 message 已经是人话（「建议内容不合法：…」），拦截器会弹出来
+    // 失败时保留 pendingRequestId：同一句话重试要复用，后端才知道这是重试而不是新要求
     phase.value = 'input'
     proposal.value = null
   } finally {

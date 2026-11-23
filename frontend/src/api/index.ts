@@ -1,4 +1,5 @@
 import http from './http'
+import { newRequestId } from './stream'
 import type {
   ApiResult,
   Id,
@@ -113,10 +114,14 @@ export const plansApi = {
    *
    * 只产出建议，不改计划：真正的写入发生在确认之后。所以这里慢一点（模型思考）
    * 不会影响任何已有数据，用户可以放心等。
+   *
+   * `clientRequestId` 是幂等键：同一次用户意图的重试必须复用同一个 ID，
+   * 否则后端会把它当成两次新请求，落下两条待确认建议。调用方不传时自动生成——
+   * 那等于「不重试也幂等」，只挡住网络层的自动重发，挡不住用户手动再点一次。
    */
-  proposeAdjustment: (id: Id, instruction: string) =>
+  proposeAdjustment: (id: Id, instruction: string, clientRequestId: string = newRequestId()) =>
     http
-      .post<ApiResult<PlanAdjustmentVO>>(`/plans/${id}/adjustments`, { instruction })
+      .post<ApiResult<PlanAdjustmentVO>>(`/plans/${id}/adjustments`, { instruction, clientRequestId })
       .then((r) => r.data.data),
 
   /** 确认调整：由 Java 应用增量操作并生成新版本 */
