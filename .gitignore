@@ -44,3 +44,7 @@ Thumbs.db
 *.rar
 hs_err_pid*
 replay_pid*
+
+# 本地临时响应（真实模型冒烟）
+var_*.json
+smoke*.json
