@@ -33,6 +33,8 @@ app:
     base-url: ${AI_SERVICE_URL:http://localhost:8000}
     # 交融网关单份计划 85–100s，7 天以上更久；给足读超时，别让用户在最后一秒被掐断
     read-timeout-ms: ${AI_READ_TIMEOUT_MS:300000}
+    plan-timeout-ms: ${AI_PLAN_TIMEOUT_MS:300000}
+    adjust-timeout-ms: ${AI_ADJUST_TIMEOUT_MS:180000}
 
 logging:
   level:

@@ -59,16 +59,20 @@ curl -s https://c4ai.ccccltd.cn/api/compatible/v1/models \
 
 ## 3. 超时必须一起调
 
-```
-Python 侧：LLM_TIMEOUT_SECONDS=240      # httpx 读超时
-Java  侧：AI_READ_TIMEOUT_MS=300000     # 默认 300s，见 AiServiceProperties
-```
+Java 侧有**三个**独立超时，缺一个就会出现「AI 算完了、Java 已放弃」的假失败：
 
-**Java 的读超时必须大于 Python 的**，否则会出现「AI 已经算完、Java 已经放弃」的假失败：
-用户看到「生成失败」，日志里 Python 却是一条成功记录。
+| 配置项 | 默认 | 管哪条路 |
+|---|---|---|
+| `AI_READ_TIMEOUT_MS` | 300s | `/chat/stream` 普通对话（SSE） |
+| `AI_PLAN_TIMEOUT_MS` | 300s | `/v1/plan/generate` 计划生成（整包，慢） |
+| `AI_ADJUST_TIMEOUT_MS` | 180s | `/v1/plan/adjust` 调整建议 |
 
-历史上 Java 侧硬编码 180s，对 DeepSeek 直连够用，对交融网关不够——
-7 天以上的行程会超过 3 分钟。已改为配置项（`app.ai.read-timeout-ms`），dev/prod 都有。
+Python 侧 `LLM_TIMEOUT_SECONDS=240` 要**小于**对应 Java 超时，让 Python 先报「模型超时」这个更准的原因。
+
+**踩过的坑**：`generatePlan` 原来硬编码 180s，而交融网关上 7 天行程实测 130–160s、长尾超过 180s，
+于是被记成 `AI 服务连接失败：request timed out`——人工排查会以为是服务宕机，
+实际上是等得不够。真实复验 20 次里恰好命中 1 次（耗时精确 180055ms，这就是证据）。
+三个超时现在都可配，dev/prod 的 yml 都有默认值。
 
 ## 4. 切换清单
 

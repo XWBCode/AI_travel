@@ -26,6 +26,8 @@ app:
   ai:
     base-url: ${AI_SERVICE_URL}
     read-timeout-ms: ${AI_READ_TIMEOUT_MS:300000}
+    plan-timeout-ms: ${AI_PLAN_TIMEOUT_MS:300000}
+    adjust-timeout-ms: ${AI_ADJUST_TIMEOUT_MS:180000}
 
 logging:
   level:

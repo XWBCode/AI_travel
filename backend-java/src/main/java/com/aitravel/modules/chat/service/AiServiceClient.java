@@ -46,10 +46,15 @@ public class AiServiceClient {
     private final String baseUrl;
     /** 单次流式读取的总时长上限，与 app.ai.read-timeout-ms 一致 */
     private final Duration readTimeout;
+    /** 计划生成与调整建议的上限（非流式，整包返回） */
+    private final Duration planTimeout;
+    private final Duration adjustTimeout;
 
     public AiServiceClient(com.aitravel.common.config.AiServiceProperties props) {
         this.baseUrl = props.getBaseUrl();
         this.readTimeout = Duration.ofMillis(props.getReadTimeoutMs());
+        this.planTimeout = Duration.ofMillis(props.getPlanTimeoutMs());
+        this.adjustTimeout = Duration.ofMillis(props.getAdjustTimeoutMs());
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(props.getConnectTimeoutMs()))
                 // SSE 走 HTTP/1.1：明文 HTTP/2 升级（h2c）对 uvicorn 无意义，只会让对端收到畸形请求
@@ -139,9 +144,9 @@ public class AiServiceClient {
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
                 .header("X-Trace-Id", traceId == null ? "" : traceId)
-                // 单次计划生成上限 180s：Mock 下毫秒级，真实模型实测 30-45s，
-                // 留出 7 天以上长行程的余量；仍小于 SSE 的 240s 兜底，超时由本层先报错
-                .timeout(Duration.ofSeconds(180))
+                // 从硬编码 180s 改为配置（默认 300s）：交融网关 7 天行程实测 130–160s，
+                // 180s 会稳定地把长尾误判成「连接失败」——用户看到的是宕机，其实是等得不够
+                .timeout(planTimeout)
                 .POST(HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8))
                 .build();
 
@@ -192,8 +197,8 @@ public class AiServiceClient {
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
                 .header("X-Trace-Id", traceId == null ? "" : traceId)
-                // 比生成短：调整只改几项，输出远小于整份计划。给 120s 是给弱模型留余量
-                .timeout(Duration.ofSeconds(120))
+                // 比生成短：调整只改几项，输出远小于整份计划；默认 180s，可配
+                .timeout(adjustTimeout)
                 .POST(HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8))
                 .build();
 
