@@ -26,6 +26,7 @@
 | BUG-014 | P2 | 校验器要求跨城段 `fromDayIndex < toDayIndex`，提示词没写，模型输出 3→3 被整份拒绝 | **已修复** | 本轮：规则 6/7/2 补齐（见下方） |
 | BUG-015 | P2 | 本地 `.env` 让单测真的调模型：2 条用例失败，且每次跑测试都在花钱 | **已修复** | 本轮：`tests/conftest.py` 强制 mock（见下方） |
 | BUG-016 | **P1** | 提示词与校验器各写各的：同源检查一上线就查出 **Q-12 从未写进提示词** | **已修复**（结构性解法） | 本轮：`contracts/travel-plan/plan_rules_v1.json` + 两侧同源用例（见下方） |
+| BUG-017 | P2 | `IdempotencyServiceTest` 依赖执行顺序：单独跑必红（MyBatis-Plus Lambda 缓存未初始化） | **已记录，未修**（等决定是否本轮处理） | 见下方 §BUG-017 |
 
 ---
 
@@ -361,3 +362,43 @@ AssertionError: 这些校验规则在 Java 里执行，但 plan_rules_v1.json �
 **遗留**：清单只覆盖「跨字段硬约束」。字段级约束仍由 JSON Schema 独占（这是对的，
 Schema 已经有 schema 校验器在两侧各跑一遍）。真正的收益是：**以后加规则，忘写提示词会红在 CI，
 而不是红在用户那里**。
+
+---
+
+## BUG-017（P2，已记录未修）`IdempotencyServiceTest` 只在特定执行顺序下通过
+
+**怎么发现的**：M3-1 做完后跑 `mvn test`，全量 149 条里红 2 条，都在幂等测试里：
+
+```
+[ERROR] IdempotencyServiceTest.failedCanRetry:102
+        MybatisPlusException: can not find lambda cache for this entity [IdempotencyRecord]
+[ERROR] IdempotencyServiceTest.failedRetryLosesRace:114
+        Unexpected exception type thrown, expected: BizException but was: MybatisPlusException
+```
+
+**先做的一件事**：确认是不是本轮改坏的。做法是 `git stash -u` 把天气相关改动全部收走，
+在干净树上单跑这一个测试类 → **一样红**（报告文件时间戳可证）。所以与本轮无关。
+天气代码里没有任何 mapper、没有改 MyBatis 配置，也不参与这条路径。
+
+**原因**：`IdempotencyService.resolveExisting` 用了 `Wrappers.<IdempotencyRecord>lambdaUpdate()`，
+Lambda 条件构造器需要 MyBatis-Plus 的 `TableInfo` 静态缓存；这份缓存在**扫到 mapper 的 Spring
+上下文启动时**才建立。而 `IdempotencyServiceTest` 是纯 Mockito 单测（`mock(IdempotencyMapper.class)`），
+自己不会初始化它。javadoc 里提到的 `IdempotencyDbTest` 是唯一会建缓存的用例，
+它需要真实 MySQL——本机没库时**整类被 skip**，于是缓存永远不存在。
+
+**表现**：单跑红、全跑可能绿（取决于 `IdempotencyDbTest` 有没有先跑且没被 skip）。
+这类「靠顺序绿」的测试比红更危险：它会让「本地红 / CI 绿」再出现一次（与 BUG-015 同一形态）。
+
+**建议修法**（未实施，等定范围）：测试类加一段 `@BeforeAll` 显式初始化实体元信息，
+不依赖上下文：
+
+```java
+@BeforeAll
+static void initTableInfo() {
+    TableInfoHelper.initTableInfo(
+        new MapperBuilderAssistant(new MybatisConfiguration(), ""), IdempotencyRecord.class);
+}
+```
+
+**为什么不顺手改**：M3-1 的范围被 PM 限定在「天气只读展示」，测试基建属于另一条线，
+顺手改会让这轮的 diff 说不清责任。已登记，等排期。
