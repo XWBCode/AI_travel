@@ -1,0 +1,714 @@
+{
+  "version": 2,
+  "note": "AC-07 畸形输入样例集（意图/输入层）。结构与字段层的畸形样例见同目录 invalid_cases.json。两侧合计 ≥ 50 组。每条的 asserts 必须可机器判定，不允许只写说明。",
+  "categories": [
+    "缺少目的地",
+    "缺少出行天数",
+    "地点歧义",
+    "不合理日期",
+    "不合理天数",
+    "空输入与超长输入",
+    "非旅行需求",
+    "混合多种意图",
+    "错误地点实体无法解析"
+  ],
+  "cases": [
+    {
+      "id": "IN-01",
+      "category": "缺少目的地",
+      "input": "我想出去玩三天",
+      "expect": "没有目的地就不该生成计划，只问目的地",
+      "asserts": [
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "path": "missingFields",
+          "op": "contains",
+          "value": "destination"
+        }
+      ]
+    },
+    {
+      "id": "IN-02",
+      "category": "缺少目的地",
+      "input": "下周一出发，玩五天",
+      "expect": "只有日期和天数，没有目的地",
+      "asserts": [
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "path": "missingFields",
+          "op": "contains",
+          "value": "destination"
+        }
+      ]
+    },
+    {
+      "id": "IN-03",
+      "category": "缺少目的地",
+      "input": "三天两晚怎么安排比较好",
+      "expect": "问行程安排但没给地点",
+      "asserts": [
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "path": "missingFields",
+          "op": "contains",
+          "value": "destination"
+        }
+      ]
+    },
+    {
+      "id": "IN-04",
+      "category": "缺少目的地",
+      "input": "帮我做个旅行行程",
+      "expect": "完全空需求，不应猜城市",
+      "asserts": [
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "path": "slots.destination",
+          "op": "isNull"
+        },
+        {
+          "path": "missingFields",
+          "op": "contains",
+          "value": "destination"
+        }
+      ]
+    },
+    {
+      "id": "IN-05",
+      "category": "缺少目的地",
+      "input": "预算八千，玩一周，你看着安排",
+      "expect": "有预算有天数但没地点，不能替用户选城市",
+      "asserts": [
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "path": "missingFields",
+          "op": "contains",
+          "value": "destination"
+        }
+      ]
+    },
+    {
+      "id": "IN-06",
+      "category": "缺少出行天数",
+      "input": "我想去成都",
+      "expect": "只有目的地，要问天数或日期",
+      "asserts": [
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "path": "missingFields",
+          "op": "contains",
+          "value": "days"
+        }
+      ]
+    },
+    {
+      "id": "IN-07",
+      "category": "缺少出行天数",
+      "input": "去三亚吧",
+      "expect": "只有目的地，要问天数",
+      "asserts": [
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "path": "missingFields",
+          "op": "contains",
+          "value": "days"
+        }
+      ]
+    },
+    {
+      "id": "IN-08",
+      "category": "缺少出行天数",
+      "input": "想去云南玩",
+      "expect": "有天数和目的地的动词但没给数字",
+      "asserts": [
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "path": "missingFields",
+          "op": "contains",
+          "value": "days"
+        }
+      ]
+    },
+    {
+      "id": "IN-09",
+      "category": "缺少出行天数",
+      "input": "西安有什么好玩的",
+      "expect": "问景点不等于要生成计划",
+      "asserts": [
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": false
+        }
+      ]
+    },
+    {
+      "id": "IN-10",
+      "category": "缺少出行天数",
+      "input": "我想去厦门旅游",
+      "expect": "有目的地无天数",
+      "asserts": [
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "path": "missingFields",
+          "op": "contains",
+          "value": "days"
+        }
+      ]
+    },
+    {
+      "id": "IN-11",
+      "category": "地点歧义",
+      "input": "我想去南边玩三天",
+      "expect": "方位词不是城市，不能当成目的地写进计划",
+      "asserts": [
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "path": "missingFields",
+          "op": "contains",
+          "value": "destination"
+        }
+      ]
+    },
+    {
+      "id": "IN-12",
+      "category": "地点歧义",
+      "input": "去北方看雪，四天",
+      "expect": "「北方」是区域泛称，不是具体目的地",
+      "asserts": [
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "path": "missingFields",
+          "op": "contains",
+          "value": "destination"
+        }
+      ]
+    },
+    {
+      "id": "IN-13",
+      "category": "地点歧义",
+      "input": "想去海边玩五天",
+      "expect": "「海边」不是城市",
+      "asserts": [
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "path": "missingFields",
+          "op": "contains",
+          "value": "destination"
+        }
+      ]
+    },
+    {
+      "id": "IN-14",
+      "category": "地点歧义",
+      "input": "我想去附近的城市玩两天",
+      "expect": "「附近的城市」无法定位，不能瞎猜",
+      "asserts": [
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "path": "missingFields",
+          "op": "contains",
+          "value": "destination"
+        }
+      ]
+    },
+    {
+      "id": "IN-15",
+      "category": "地点歧义",
+      "input": "去首都玩三天",
+      "expect": "「首都」没有唯一解，应交回用户确认",
+      "asserts": [
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "path": "missingFields",
+          "op": "contains",
+          "value": "destination"
+        }
+      ]
+    },
+    {
+      "id": "IN-16",
+      "category": "不合理日期",
+      "input": "我想去成都玩三天，2月30号出发",
+      "expect": "2 月没有 30 号，日期必须判无效",
+      "asserts": [
+        {
+          "path": "slots.startDate",
+          "op": "isNull"
+        }
+      ]
+    },
+    {
+      "id": "IN-17",
+      "category": "不合理日期",
+      "input": "13月45号去三亚玩四天",
+      "expect": "13 月 45 号不存在",
+      "asserts": [
+        {
+          "path": "slots.startDate",
+          "op": "isNull"
+        }
+      ]
+    },
+    {
+      "id": "IN-18",
+      "category": "不合理日期",
+      "input": "2026-13-01 去西安玩四天",
+      "expect": "ISO 写法但月份非法",
+      "asserts": [
+        {
+          "path": "slots.startDate",
+          "op": "isNull"
+        }
+      ]
+    },
+    {
+      "id": "IN-19",
+      "category": "不合理日期",
+      "input": "去丽江玩三天，2020-01-01 到 2020-01-03",
+      "expect": "过去日期可以解析但不该被当成未来行程误推天数",
+      "asserts": [
+        {
+          "path": "slots.days",
+          "op": "eq",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "id": "IN-20",
+      "category": "不合理日期",
+      "input": "去成都三天，12月20日出发，12月18日回来",
+      "expect": "结束早于开始，不能算出负天数",
+      "asserts": [
+        {
+          "path": "slots.days",
+          "op": "gte",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "id": "IN-21",
+      "category": "不合理天数",
+      "input": "去三亚玩 0 天",
+      "expect": "0 天不是有效行程",
+      "asserts": [
+        {
+          "path": "slots.days",
+          "op": "isNull"
+        },
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": false
+        }
+      ]
+    },
+    {
+      "id": "IN-22",
+      "category": "不合理天数",
+      "input": "去西安玩 99 天",
+      "expect": "超过 30 天不接受",
+      "asserts": [
+        {
+          "path": "slots.days",
+          "op": "isNull"
+        },
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": false
+        }
+      ]
+    },
+    {
+      "id": "IN-23",
+      "category": "不合理天数",
+      "input": "去北京玩 400 天",
+      "expect": "明显越界",
+      "asserts": [
+        {
+          "path": "slots.days",
+          "op": "isNull"
+        }
+      ]
+    },
+    {
+      "id": "IN-24",
+      "category": "不合理天数",
+      "input": "去成都玩三十五天",
+      "expect": "中文数字同样要受 30 天上限约束",
+      "asserts": [
+        {
+          "path": "slots.days",
+          "op": "isNull"
+        }
+      ]
+    },
+    {
+      "id": "IN-25",
+      "category": "空输入与超长输入",
+      "input": "",
+      "expect": "空输入不崩溃、不生成",
+      "asserts": [
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": false
+        }
+      ]
+    },
+    {
+      "id": "IN-26",
+      "category": "空输入与超长输入",
+      "input": "   \n\t  ",
+      "expect": "纯空白等同空输入",
+      "asserts": [
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": false
+        }
+      ]
+    },
+    {
+      "id": "IN-27",
+      "category": "空输入与超长输入",
+      "input": "啊",
+      "expect": "单字无意义输入不生成计划",
+      "asserts": [
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": false
+        }
+      ]
+    },
+    {
+      "id": "IN-28",
+      "category": "空输入与超长输入",
+      "input": "啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊",
+      "expect": "无意义重复 80 字，不应被解析出目的地",
+      "asserts": [
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "path": "slots.destination",
+          "op": "isNull"
+        }
+      ]
+    },
+    {
+      "id": "IN-29",
+      "category": "空输入与超长输入",
+      "input": "去成都玩三天。去成都玩三天。去成都玩三天。去成都玩三天。去成都玩三天。去成都玩三天。去成都玩三天。去成都玩三天。去成都玩三天。去成都玩三天。去成都玩三天。去成都玩三天。去成都玩三天。去成都玩三天。去成都玩三天。去成都玩三天。去成都玩三天。去成都玩三天。去成都玩三天。去成都玩三天。",
+      "expect": "超长重复输入仍能稳定解析出成都 3 天，不因长度失控",
+      "asserts": [
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "path": "slots.destination",
+          "op": "eq",
+          "value": "成都"
+        },
+        {
+          "path": "slots.days",
+          "op": "eq",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "id": "IN-30",
+      "category": "非旅行需求",
+      "input": "帮我写一段 Python 快速排序",
+      "expect": "编程问题不是旅行需求（scene 取值域是 general/plan，不设 chat）",
+      "asserts": [
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": false
+        }
+      ]
+    },
+    {
+      "id": "IN-31",
+      "category": "非旅行需求",
+      "input": "今天股市怎么样",
+      "expect": "行情问题不是旅行需求",
+      "asserts": [
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": false
+        }
+      ]
+    },
+    {
+      "id": "IN-32",
+      "category": "非旅行需求",
+      "input": "把这段中文翻译成英文：我想去成都玩三天",
+      "expect": "含旅行字眼但是翻译任务，不能触发计划生成",
+      "asserts": [
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": false
+        }
+      ]
+    },
+    {
+      "id": "IN-33",
+      "category": "非旅行需求",
+      "input": "讲个笑话",
+      "expect": "闲聊不生成计划",
+      "asserts": [
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": false
+        }
+      ]
+    },
+    {
+      "id": "IN-34",
+      "category": "非旅行需求",
+      "input": "感冒了吃什么药",
+      "expect": "医疗问题不生成计划",
+      "asserts": [
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": false
+        }
+      ]
+    },
+    {
+      "id": "IN-35",
+      "category": "混合多种意图",
+      "input": "帮我订机票，顺便写个周报",
+      "expect": "两个非行程任务，不生成计划",
+      "asserts": [
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": false
+        }
+      ]
+    },
+    {
+      "id": "IN-36",
+      "category": "混合多种意图",
+      "input": "我想去成都玩三天，另外帮我算一下复利",
+      "expect": "旅行信息完整，可以生成；附加任务不影响槽位",
+      "asserts": [
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "path": "slots.destination",
+          "op": "eq",
+          "value": "成都"
+        },
+        {
+          "path": "slots.days",
+          "op": "eq",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "id": "IN-37",
+      "category": "混合多种意图",
+      "input": "明天天气怎么样，我打算去爬山",
+      "expect": "问天气且没有明确目的地与天数",
+      "asserts": [
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": false
+        }
+      ]
+    },
+    {
+      "id": "IN-38",
+      "category": "混合多种意图",
+      "input": "帮我写简历，我想去旅游公司上班",
+      "expect": "求职问题，「旅游公司」不是目的地",
+      "asserts": [
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "path": "slots.destination",
+          "op": "isNull"
+        }
+      ]
+    },
+    {
+      "id": "IN-39",
+      "category": "混合多种意图",
+      "input": "先帮我写代码，再去三亚玩四天",
+      "expect": "含完整旅行信息，应识别三亚 4 天",
+      "asserts": [
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "path": "slots.destination",
+          "op": "eq",
+          "value": "三亚"
+        },
+        {
+          "path": "slots.days",
+          "op": "eq",
+          "value": 4
+        }
+      ]
+    },
+    {
+      "id": "IN-40",
+      "category": "错误地点实体无法解析",
+      "input": "我想去霍格沃茨玩三天",
+      "expect": "虚构地名无法核对，但也不应崩溃；系统按用户原话处理，由模型层兜底说明",
+      "asserts": [
+        {
+          "path": "slots.days",
+          "op": "eq",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "id": "IN-41",
+      "category": "错误地点实体无法解析",
+      "input": "去阿斯加德五天",
+      "expect": "虚构地名 + 天数，解析不崩溃",
+      "asserts": [
+        {
+          "path": "slots.days",
+          "op": "eq",
+          "value": 5
+        }
+      ]
+    },
+    {
+      "id": "IN-42",
+      "category": "错误地点实体无法解析",
+      "input": "想去亚特兰蒂斯玩四天",
+      "expect": "虚构地名不触发异常",
+      "asserts": [
+        {
+          "path": "slots.days",
+          "op": "eq",
+          "value": 4
+        }
+      ]
+    },
+    {
+      "id": "IN-43",
+      "category": "错误地点实体无法解析",
+      "input": "去瓦坎达三天，两个人",
+      "expect": "虚构地名 + 天数 + 人数，槽位仍稳定",
+      "asserts": [
+        {
+          "path": "slots.days",
+          "op": "eq",
+          "value": 3
+        },
+        {
+          "path": "slots.travelers",
+          "op": "eq",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "id": "IN-44",
+      "category": "错误地点实体无法解析",
+      "input": "去一个不存在的地方玩两天",
+      "expect": "「不存在的地方」是占位表述，不应成为目的地",
+      "asserts": [
+        {
+          "path": "needPlan",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "path": "missingFields",
+          "op": "contains",
+          "value": "destination"
+        }
+      ]
+    }
+  ]
+}

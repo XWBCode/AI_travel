@@ -58,11 +58,17 @@ public class PlanController {
 
     /** 触发生成；返回落库后的计划详情（stored 模型） */
     @PostMapping("/generate")
-    public Result<JsonNode> generate(@Valid @RequestBody GenerateRequest req) {
+    public Result<JsonNode> generate(@Valid @RequestBody GenerateRequest req,
+                                     HttpServletRequest http) {
         List<Map<String, String>> messages = req.getMessages().stream()
                 .map(m -> Map.of("role", m.getRole(), "content", m.getContent()))
                 .toList();
-        return Result.ok(planService.generate(CurrentUser.requireUserId(), messages));
+        // 幂等键两处都收：body 字段（前端显式传）与 X-Client-Request-Id 头（脚本/网关重试更自然）
+        String requestId = req.getClientRequestId();
+        if (requestId == null || requestId.isBlank()) {
+            requestId = http.getHeader("X-Client-Request-Id");
+        }
+        return Result.ok(planService.generate(CurrentUser.requireUserId(), messages, requestId));
     }
 
     @GetMapping
@@ -266,6 +272,13 @@ public class PlanController {
         @NotEmpty(message = "消息列表不能为空")
         @Size(max = 40, message = "消息条数不得超过 40")
         private List<@Valid Message> messages;
+
+        /**
+         * 幂等键（05 §5）：同一次提交的所有重试必须复用同一个值。
+         * 不传则退化为非幂等行为——保留给内部脚本，前端一律传。
+         */
+        @Size(max = 64, message = "clientRequestId 不得超过 64 个字符")
+        private String clientRequestId;
     }
 
     @Data

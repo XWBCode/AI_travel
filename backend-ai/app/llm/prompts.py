@@ -119,7 +119,14 @@ PLAN_SYSTEM_PROMPT = """你是「AI 旅行助手」的计划编译器。你的�
 1. 事实字段一律用上面七键形态，**value 必须为 null**，绝不能填任何数字。
    适用：items[].duration / openHours / ticketPrice、transportSegments[].duration / distance、
    accommodation.priceRange、budget.total、budget.items[].amount。
+   **七个键必须全部出现，一个都不能省。** 尤其注意 `fetchedAt` 与 `expiresAt`：
+   没有取值时也要显式写成 `null`，不能因为它是空就整键省略——少一个键，整份计划会被校验器作废。
+   输出前请对上面每一个适用位置逐个自查「七个键是否齐全」。
 2. 固定值：planId 必须为 null；status 必须为 "DRAFT"；schemaVersion 必须为 "1.0"；
+   用户给的是**省份/大区**（如云南、川西、江浙）时，basic.destination 可以写该名称，
+   但 days[].city 只能用计划里真实停留的具体城市，并且这些城市必须同时出现在 basic.destinations 里
+   （例：destination="云南"，destinations=["云南","昆明","大理"]，days[].city 取昆明/大理）。
+   校验器要求 days[].city ∈ destinations，漏列会被整份拒绝。
    budget.currency 必须为 "CNY"；attractionId 必须为 null。
    budget.items[].category 只能取这五个之一：TRANSPORT、ACCOMMODATION、FOOD、TICKET、OTHER
    （购物、娱乐、门票以外的一律归 OTHER，不得自造 SHOPPING、ENTERTAINMENT 等值）。

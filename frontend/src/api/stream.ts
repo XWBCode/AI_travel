@@ -44,11 +44,24 @@ export interface StreamHandlers {
  * 2. EventSource 无法自定义 Authorization 头。
  * 因此用 fetch + ReadableStream 手动解析。
  */
+/**
+ * 幂等键（05 §5 / BUG-007）：默认每次调用生成一个。
+ * 需要「同一次发送的自动重试」时，由调用方把上次的 ID 显式传进来复用；
+ * 用户自己再发一条属于新意图，应当用新 ID。
+ */
+function newRequestId(): string {
+  const c = globalThis.crypto as Crypto | undefined
+  if (c && typeof c.randomUUID === 'function') return c.randomUUID()
+  // 老浏览器兜底：只要求唯一，不要求密码学强度
+  return `r-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+
 export async function streamChat(
   content: string,
   sessionId: Id | null,
   handlers: StreamHandlers,
   signal?: AbortSignal,
+  clientRequestId: string = newRequestId(),
 ): Promise<void> {
   try {
     const resp = await fetch('/api/chat/stream', {
@@ -58,7 +71,7 @@ export async function streamChat(
         Accept: 'text/event-stream',
         Authorization: `Bearer ${getToken()}`,
       },
-      body: JSON.stringify({ content, sessionId }),
+      body: JSON.stringify({ content, sessionId, clientRequestId }),
       signal,
     })
 

@@ -55,6 +55,13 @@ public enum ErrorCode {
     ADJUSTMENT_NOOP(30110, "这条建议没有带来任何变化"),
     /** 通知不存在：正常前端只会标自己刚列出来的那几条，出现即说明请求是拼的或已过期 */
     NOTIFICATION_NOT_FOUND(30111, "通知不存在"),
+    /**
+     * 同一个 clientRequestId 提交了不同内容。
+     * 不能返回首次结果——那会让调用方以为「我这次的请求成功了」，实际结果属于另一次请求。
+     */
+    IDEMPOTENCY_CONFLICT(30112, "相同请求 ID 提交了不同内容，请勿复用请求 ID"),
+    /** 同一请求仍在处理中；直接拒绝比排队更诚实，也避免重复消耗模型额度 */
+    IDEMPOTENCY_PROCESSING(30113, "该请求正在处理中，请稍候查看结果"),
     SESSION_NOT_FOUND(30201, "会话不存在"),
 
     AI_SERVICE_UNAVAILABLE(50201, "AI 服务暂时不可用"),

@@ -305,19 +305,62 @@ def ac06():
 # ---------------------------------------------------------------- AC-07
 
 def ac07():
-    """Schema 校验：契约里 10 组畸形样例必须全部被拒（AI 侧校验器）。"""
-    path = os.path.join(os.path.dirname(__file__), "..", "..",
-                        "contracts", "travel-plan", "examples", "invalid_cases.json")
+    """Schema 校验 + 畸形输入：共 54 组，输入层 44 组走真实 HTTP 逐条判定。
+
+    结构层 10 组（invalid_cases.json）由 pytest 的 test_invalid_schema_cases.py 执行；
+    输入层 44 组（invalid_inputs.json）在这里直接打 AI 服务，因为它们是「意图识别」行为，
+    只能靠运行结果证明，不能靠数文件证明。
+    """
+    examples = os.path.join(os.path.dirname(__file__), "..", "..", "contracts", "travel-plan", "examples")
+    struct_file = os.path.join(examples, "invalid_cases.json")
+    input_file = os.path.join(examples, "invalid_inputs.json")
     try:
-        cases = json.load(open(path, encoding="utf-8"))
-    except FileNotFoundError:
-        record("AC-07", "计划 Schema 校验", "BLOCKED", "找不到畸形样例集", path)
+        struct_cases = json.load(open(struct_file, encoding="utf-8"))
+        input_cases = json.load(open(input_file, encoding="utf-8"))["cases"]
+    except FileNotFoundError as e:
+        record("AC-07", "计划 Schema 校验", "BLOCKED", "找不到畸形样例集", str(e))
         return
-    # 由 pytest 侧真正执行；这里只核对样例规模，并把结果标为部分
-    record("AC-07", "计划 Schema 校验", "PARTIAL",
-           f"畸形样例 {len(cases)} 组（目标 50 组）",
-           "执行证据在 backend-ai/tests/test_plan.py 与 PlanSchemaValidatorTest；"
-           "「注入 50 组」的样本量未达 02 §6 目标，故记 PARTIAL 而非 PASS")
+
+    total = len(struct_cases) + len(input_cases)
+    cases_run, failed = 0, []
+
+    for case in input_cases:
+        status, payload = call("POST", "/v1/plan/intent",
+                               {"messages": [{"role": "user", "content": case["input"]}]},
+                               base=AI, timeout=20)
+        if status != 200 or payload.get("code") != 0:
+            failed.append(f"{case['id']} 接口异常 HTTP {status}")
+            continue
+        data = payload.get("data") or {}
+        view = {**data, "slots": data.get("slots") or {}}
+        cases_run += 1
+        for spec in case["asserts"]:
+            value = view
+            for part in spec["path"].split("."):
+                value = value.get(part) if isinstance(value, dict) else None
+            op, expect = spec["op"], spec.get("value")
+            ok = (
+                value == expect if op == "eq"
+                else value is None if op == "isNull"
+                else isinstance(value, list) and expect in value if op == "contains"
+                else (value is not None and value >= expect) if op == "gte"
+                else (value is not None and value <= expect) if op == "lte"
+                else False
+            )
+            if not ok:
+                failed.append(f"{case['id']} {spec['path']} {op} {expect!r} 实际 {value!r}")
+
+    status_ = "PASS" if (not failed and total >= 50) else "FAIL"
+    metric = f"畸形样例 {total} 组（结构 {len(struct_cases)} + 输入 {len(input_cases)}），输入层实跑 {cases_run} 组"
+    detail = (
+        "结构层由 test_invalid_schema_cases.py 逐组断言被拒且报错路径正确；"
+        "输入层逐条打 /v1/plan/intent，核对 needPlan/destination/days/missingFields"
+        if not failed else f"不满足 {len(failed)} 条：" + "；".join(failed[:6])
+    )
+    if total < 50:
+        status_ = "PARTIAL"
+    record("AC-07", "计划 Schema 校验", status_, metric, detail,
+           "" if status_ == "PASS" else "样本量或断言未达标")
 
 
 # ---------------------------------------------------------------- AC-08

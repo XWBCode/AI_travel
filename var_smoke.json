@@ -1,0 +1,1 @@
+{"code":10002,"message":"生成结果未通过校验，请重试","data":{"intent":{"scene":"plan","needPlan":true,"missingFields":["startDate","endDate","originCity","transport","accommodation"]},"draft":null,"rejected":{"reason":"SCHEMA_VIOLATION","errors":["days/2/items/1/ticketPrice: 'fetchedAt' is a required property"],"traceId":""},"skipped":null,"missingFields":null,"done":{}},"traceId":""}

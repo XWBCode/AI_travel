@@ -1,0 +1,319 @@
+{
+  "at": "2026-11-23T17:03:07",
+  "model": "deepseek-chat",
+  "gen": {
+    "n": 20,
+    "ok": 0,
+    "p50ms": 561,
+    "p95ms": 2604,
+    "unverifiedWithValue": 0
+  },
+  "adjust": {
+    "n": 0,
+    "ok": 0,
+    "emptyOps": 0
+  },
+  "gens": [
+    {
+      "i": 1,
+      "input": "帮我规划成都三天，两个人，预算五千，喜欢美食和历史文化",
+      "ok": false,
+      "ms": 533,
+      "planId": null,
+      "events": [
+        "error",
+        "intent",
+        "meta",
+        "plan_progress",
+        "plan_rejected"
+      ],
+      "answerTail": "[rejected:SCHEMA_VIOLATION][error:50201]"
+    },
+    {
+      "i": 2,
+      "input": "我想去西安玩四天，一个人，喜欢历史",
+      "ok": false,
+      "ms": 536,
+      "planId": null,
+      "events": [
+        "error",
+        "intent",
+        "meta",
+        "plan_progress",
+        "plan_rejected"
+      ],
+      "answerTail": "[rejected:SCHEMA_VIOLATION][error:50201]"
+    },
+    {
+      "i": 3,
+      "input": "帮我规划厦门三天，爱吃海鲜，想住海边",
+      "ok": false,
+      "ms": 641,
+      "planId": null,
+      "events": [
+        "error",
+        "intent",
+        "meta",
+        "plan_progress",
+        "plan_rejected"
+      ],
+      "answerTail": "[rejected:SCHEMA_VIOLATION][error:50201]"
+    },
+    {
+      "i": 4,
+      "input": "去杭州玩两天，带父母，节奏慢一点",
+      "ok": false,
+      "ms": 549,
+      "planId": null,
+      "events": [
+        "error",
+        "intent",
+        "meta",
+        "plan_progress",
+        "plan_rejected"
+      ],
+      "answerTail": "[rejected:SCHEMA_VIOLATION][error:50201]"
+    },
+    {
+      "i": 5,
+      "input": "想去云南玩五天，喜欢自然风光",
+      "ok": false,
+      "ms": 545,
+      "planId": null,
+      "events": [
+        "error",
+        "intent",
+        "meta",
+        "plan_progress",
+        "plan_rejected"
+      ],
+      "answerTail": "[rejected:SCHEMA_VIOLATION][error:50201]"
+    },
+    {
+      "i": 6,
+      "input": "帮我规划青岛三天，两个人，预算四千",
+      "ok": false,
+      "ms": 969,
+      "planId": null,
+      "events": [
+        "error",
+        "intent",
+        "meta",
+        "plan_progress",
+        "plan_rejected"
+      ],
+      "answerTail": "[rejected:SCHEMA_VIOLATION][error:50201]"
+    },
+    {
+      "i": 7,
+      "input": "去重庆玩三天，喜欢火锅和夜景",
+      "ok": false,
+      "ms": 538,
+      "planId": null,
+      "events": [
+        "error",
+        "intent",
+        "meta",
+        "plan_progress",
+        "plan_rejected"
+      ],
+      "answerTail": "[rejected:SCHEMA_VIOLATION][error:50201]"
+    },
+    {
+      "i": 8,
+      "input": "帮我规划长沙两天，一个人，预算一千五",
+      "ok": false,
+      "ms": 501,
+      "planId": null,
+      "events": [
+        "error",
+        "intent",
+        "meta",
+        "plan_progress",
+        "plan_rejected"
+      ],
+      "answerTail": "[rejected:SCHEMA_VIOLATION][error:50201]"
+    },
+    {
+      "i": 9,
+      "input": "想去南京玩四天，喜欢博物馆",
+      "ok": false,
+      "ms": 2604,
+      "planId": null,
+      "events": [
+        "error",
+        "intent",
+        "meta",
+        "plan_progress",
+        "plan_rejected"
+      ],
+      "answerTail": "[rejected:SCHEMA_VIOLATION][error:50201]"
+    },
+    {
+      "i": 10,
+      "input": "去苏州玩三天，两个人，喜欢园林",
+      "ok": false,
+      "ms": 552,
+      "planId": null,
+      "events": [
+        "error",
+        "intent",
+        "meta",
+        "plan_progress",
+        "plan_rejected"
+      ],
+      "answerTail": "[rejected:SCHEMA_VIOLATION][error:50201]"
+    },
+    {
+      "i": 11,
+      "input": "帮我规划桂林四天，喜欢山水",
+      "ok": false,
+      "ms": 1077,
+      "planId": null,
+      "events": [
+        "error",
+        "intent",
+        "meta",
+        "plan_progress",
+        "plan_rejected"
+      ],
+      "answerTail": "[rejected:SCHEMA_VIOLATION][error:50201]"
+    },
+    {
+      "i": 12,
+      "input": "去大理玩五天，一个人，预算三千",
+      "ok": false,
+      "ms": 564,
+      "planId": null,
+      "events": [
+        "error",
+        "intent",
+        "meta",
+        "plan_progress",
+        "plan_rejected"
+      ],
+      "answerTail": "[rejected:SCHEMA_VIOLATION][error:50201]"
+    },
+    {
+      "i": 13,
+      "input": "帮我规划哈尔滨三天，看冰雪",
+      "ok": false,
+      "ms": 502,
+      "planId": null,
+      "events": [
+        "error",
+        "intent",
+        "meta",
+        "plan_progress",
+        "plan_rejected"
+      ],
+      "answerTail": "[rejected:SCHEMA_VIOLATION][error:50201]"
+    },
+    {
+      "i": 14,
+      "input": "去拉萨玩五天，两个人，注意高反",
+      "ok": false,
+      "ms": 582,
+      "planId": null,
+      "events": [
+        "error",
+        "intent",
+        "meta",
+        "plan_progress",
+        "plan_rejected"
+      ],
+      "answerTail": "[rejected:SCHEMA_VIOLATION][error:50201]"
+    },
+    {
+      "i": 15,
+      "input": "帮我规划广州两天，喜欢早茶",
+      "ok": false,
+      "ms": 1257,
+      "planId": null,
+      "events": [
+        "error",
+        "intent",
+        "meta",
+        "plan_progress",
+        "plan_rejected"
+      ],
+      "answerTail": "[rejected:SCHEMA_VIOLATION][error:50201]"
+    },
+    {
+      "i": 16,
+      "input": "去武汉玩三天，喜欢小吃",
+      "ok": false,
+      "ms": 618,
+      "planId": null,
+      "events": [
+        "error",
+        "intent",
+        "meta",
+        "plan_progress",
+        "plan_rejected"
+      ],
+      "answerTail": "[rejected:SCHEMA_VIOLATION][error:50201]"
+    },
+    {
+      "i": 17,
+      "input": "帮我规划天津两天，一个人",
+      "ok": false,
+      "ms": 520,
+      "planId": null,
+      "events": [
+        "error",
+        "intent",
+        "meta",
+        "plan_progress",
+        "plan_rejected"
+      ],
+      "answerTail": "[rejected:SCHEMA_VIOLATION][error:50201]"
+    },
+    {
+      "i": 18,
+      "input": "去洛阳玩三天，喜欢古迹",
+      "ok": false,
+      "ms": 561,
+      "planId": null,
+      "events": [
+        "error",
+        "intent",
+        "meta",
+        "plan_progress",
+        "plan_rejected"
+      ],
+      "answerTail": "[rejected:SCHEMA_VIOLATION][error:50201]"
+    },
+    {
+      "i": 19,
+      "input": "帮我规划贵阳四天，喜欢自然",
+      "ok": false,
+      "ms": 504,
+      "planId": null,
+      "events": [
+        "error",
+        "intent",
+        "meta",
+        "plan_progress",
+        "plan_rejected"
+      ],
+      "answerTail": "[rejected:SCHEMA_VIOLATION][error:50201]"
+    },
+    {
+      "i": 20,
+      "input": "去西宁玩五天，想看看青海湖",
+      "ok": false,
+      "ms": 609,
+      "planId": null,
+      "events": [
+        "error",
+        "intent",
+        "meta",
+        "plan_progress",
+        "plan_rejected"
+      ],
+      "answerTail": "[rejected:SCHEMA_VIOLATION][error:50201]"
+    }
+  ],
+  "adjusts": []
+}

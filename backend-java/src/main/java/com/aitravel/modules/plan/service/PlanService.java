@@ -43,6 +43,7 @@ public class PlanService {
     private final GenerationLogWriter logWriter;
     private final AiServiceClient aiServiceClient;
     private final TravelPlanMapper planMapper;
+    private final com.aitravel.modules.idempotency.service.IdempotencyService idempotencyService;
 
     /**
      * 生成计划：AI 生成 → 契约校验 → 事务落库 → 留痕。
@@ -50,7 +51,79 @@ public class PlanService {
      * 校验失败时<b>不落业务表</b>，只写 {@code t_ai_generation_log}（AC-07）。
      */
     public JsonNode generate(Long userId, List<Map<String, String>> messages) {
-        return generate(userId, messages, null, null);
+        return generate(userId, messages, null, null, null);
+    }
+
+    /** /plans/generate 用：无来源会话的单次生成（可带幂等键） */
+    public JsonNode generate(Long userId, List<Map<String, String>> messages, String clientRequestId) {
+        return generate(userId, messages, null, null, clientRequestId);
+    }
+
+    public JsonNode generate(Long userId, List<Map<String, String>> messages,
+                             Long sessionId, Long sourceMessageId) {
+        return generate(userId, messages, sessionId, sourceMessageId, null);
+    }
+
+    /**
+     * 带幂等键的生成（BUG-007 / 05 §5）。聊天流式与 /plans/generate 都走这里。
+     *
+     * <p>语义：
+     * <ul>
+     *   <li>首次提交 → 正常生成，成功后把 planId 记进幂等记录；</li>
+     *   <li>同一 ID 再次提交且上次成功 → 直接回放那份计划，不调用模型、不新建业务数据；</li>
+     *   <li>同一 ID 再次提交且上次失败 → 允许重试（条件更新抢占）；</li>
+     *   <li>同一 ID 但内容不同 → 30112，绝不回放别人的结果；</li>
+     *   <li>同一 ID 正在处理 → 30113，让调用方等，而不是再烧一次模型额度。</li>
+     * </ul>
+     *
+     * <p>不传 clientRequestId 时退化为原行为（保留给内部脚本与旧客户端）。
+     * 前端一律传，但服务端不「只靠前端」——幂等判定落在这一层与数据库唯一键上。
+     */
+    public JsonNode generate(Long userId, List<Map<String, String>> messages,
+                             Long sessionId, Long sourceMessageId, String clientRequestId) {
+        if (clientRequestId == null || clientRequestId.isBlank()) {
+            return generateOnce(userId, messages, sessionId, sourceMessageId);
+        }
+        String requestId = clientRequestId.trim();
+        if (requestId.length() > 64) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "clientRequestId 不得超过 64 个字符");
+        }
+        String hash = com.aitravel.modules.idempotency.service.IdempotencyService.hashOf(
+                com.aitravel.modules.idempotency.service.IdempotencyService.ACTION_PLAN_GENERATE,
+                canonicalMessages(messages));
+
+        var decision = idempotencyService.begin(userId, requestId,
+                com.aitravel.modules.idempotency.service.IdempotencyService.ACTION_PLAN_GENERATE, hash);
+        if (!decision.first()) {
+            // 已成功：回放首次结果。用 detail 重新读，而不是缓存 JSON——
+            // 用户在两次请求之间可能改过草稿，回放必须是「当前那份计划」
+            String ref = decision.record().getResultRef();
+            log.info("幂等回放 requestId={} planId={}", requestId, ref);
+            return detail(Long.valueOf(ref), userId);
+        }
+
+        try {
+            JsonNode plan = generateOnce(userId, messages, sessionId, sourceMessageId);
+            String planId = plan.path("planId").asText(plan.path("id").asText(null));
+            idempotencyService.succeed(decision.record().getId(), planId);
+            return plan;
+        } catch (RuntimeException e) {
+            int code = e instanceof BizException biz
+                    ? biz.getErrorCode().getCode()
+                    : ErrorCode.INTERNAL_ERROR.getCode();
+            idempotencyService.fail(decision.record().getId(), code);
+            throw e;
+        }
+    }
+
+    /** 幂等哈希的规范化：只取语义相关的字段，顺序固定，避免 Map 迭代顺序造成误判 */
+    private static String canonicalMessages(List<Map<String, String>> messages) {
+        StringBuilder sb = new StringBuilder();
+        for (Map<String, String> m : messages) {
+            sb.append(m.getOrDefault("role", "")).append('\u0001')
+              .append(m.getOrDefault("content", "")).append('\u0002');
+        }
+        return sb.toString();
     }
 
     /**
@@ -59,8 +132,8 @@ public class PlanService {
      * @param sessionId       来源会话，脱离对话生成时为 null
      * @param sourceMessageId 触发本次生成的用户消息
      */
-    public JsonNode generate(Long userId, List<Map<String, String>> messages,
-                             Long sessionId, Long sourceMessageId) {
+    private JsonNode generateOnce(Long userId, List<Map<String, String>> messages,
+                                  Long sessionId, Long sourceMessageId) {
         String traceId = TraceIdHolder.get();
         long startedAt = System.currentTimeMillis();
 

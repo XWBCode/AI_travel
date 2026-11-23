@@ -63,9 +63,9 @@ class ChatPlanAbortTest {
     @Test
     @DisplayName("客户端在生成期间断开：计划已落库，必须补记一条 CANCELED，不能什么都不留")
     void abortedPlanStillSavedAsCanceled() throws Exception {
-        when(plans.generate(anyLong(), any(), any(), any())).thenReturn(planNode());
+        when(plans.generate(anyLong(), any(), any(), any(), any())).thenReturn(planNode());
 
-        controller.runPlan(emitter, 10L, 20L, 30L, turns(), "trace", intent(), new AtomicBoolean(true));
+        controller.runPlan(emitter, 10L, 20L, 30L, turns(), "trace", intent(), new AtomicBoolean(true), "req-1");
 
         // 内容不能为空：计划确实生成了，用户回来要能看见「已生成《成都 3 日》」
         verify(sessions).saveAssistantMessage(eq(10L), eq(30L), org.mockito.ArgumentMatchers.contains("已生成"),
@@ -75,9 +75,9 @@ class ChatPlanAbortTest {
     @Test
     @DisplayName("生成抛未预料异常：落 FAILED，不能把这一轮吞掉")
     void unexpectedErrorStillRecorded() {
-        when(plans.generate(anyLong(), any(), any(), any())).thenThrow(new IllegalStateException("boom"));
+        when(plans.generate(anyLong(), any(), any(), any(), any())).thenThrow(new IllegalStateException("boom"));
 
-        controller.runPlan(emitter, 10L, 20L, 30L, turns(), "trace", intent(), new AtomicBoolean(false));
+        controller.runPlan(emitter, 10L, 20L, 30L, turns(), "trace", intent(), new AtomicBoolean(false), "req-1");
 
         verify(sessions).saveAssistantMessage(eq(10L), eq(30L), eq(""), eq("plan-assistant"),
                 anyLong(), eq("FAILED"), anyString());
@@ -86,9 +86,9 @@ class ChatPlanAbortTest {
     @Test
     @DisplayName("正常生成：状态 SUCCESS，且只落一条（修复不能顺手多写一条）")
     void normalPathSavesOnce() throws Exception {
-        when(plans.generate(anyLong(), any(), any(), any())).thenReturn(planNode());
+        when(plans.generate(anyLong(), any(), any(), any(), any())).thenReturn(planNode());
 
-        controller.runPlan(emitter, 10L, 20L, 30L, turns(), "trace", intent(), new AtomicBoolean(false));
+        controller.runPlan(emitter, 10L, 20L, 30L, turns(), "trace", intent(), new AtomicBoolean(false), "req-1");
 
         verify(sessions).saveAssistantMessage(eq(10L), eq(30L), anyString(), eq("plan-assistant"),
                 anyLong(), eq("SUCCESS"), any());

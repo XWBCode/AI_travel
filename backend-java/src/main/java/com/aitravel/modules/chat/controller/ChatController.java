@@ -111,7 +111,8 @@ public class ChatController {
             aiStreamExecutor.execute(() -> {
                 MDC.put(TraceIdFilter.MDC_KEY, traceId == null ? "" : traceId);
                 try {
-                    runStream(emitter, session.getId(), userMessage.getId(), userId, turns, traceId, canceled);
+                    runStream(emitter, session.getId(), userMessage.getId(), userId, turns, traceId, canceled,
+                            req.getClientRequestId());
                 } catch (Exception e) {
                     log.error("流式对话处理异常 sessionId={}", session.getId(), e);
                     completeWithError(emitter, ErrorCode.INTERNAL_ERROR.getCode(), "服务内部错误，请稍后重试");
@@ -133,7 +134,8 @@ public class ChatController {
      * 左侧列表都依赖它），不必等意图判定返回。
      */
     private void runStream(SseEmitter emitter, Long sessionId, Long userMessageId, Long userId,
-                           List<Map<String, String>> turns, String traceId, AtomicBoolean canceled) {
+                           List<Map<String, String>> turns, String traceId, AtomicBoolean canceled,
+                           String clientRequestId) {
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("sessionId", sessionId);
         meta.put("userMessageId", userMessageId);
@@ -155,7 +157,8 @@ public class ChatController {
         } else if (!intent.needPlan()) {
             runFollowUp(emitter, sessionId, userId, intent, canceled);
         } else {
-            runPlan(emitter, sessionId, userMessageId, userId, turns, traceId, intent, canceled);
+            runPlan(emitter, sessionId, userMessageId, userId, turns, traceId, intent, canceled,
+                    clientRequestId);
         }
     }
 
@@ -274,7 +277,8 @@ public class ChatController {
      */
     void runPlan(SseEmitter emitter, Long sessionId, Long userMessageId, Long userId,
                  List<Map<String, String>> turns, String traceId,
-                 PlanIntentService.PlanIntent intent, AtomicBoolean canceled) {
+                 PlanIntentService.PlanIntent intent, AtomicBoolean canceled,
+                 String clientRequestId) {
         long startAt = System.currentTimeMillis();
         AtomicBoolean settled = new AtomicBoolean(false);
 
@@ -290,7 +294,7 @@ public class ChatController {
                 Map.of("stage", "generating", "message", "正在生成计划…"));
 
         try {
-            JsonNode plan = planService.generate(userId, turns, sessionId, userMessageId);
+            JsonNode plan = planService.generate(userId, turns, sessionId, userMessageId, clientRequestId);
             // 摘要提前算：无论后面走「正常下发」还是「断连补记」都要用它
             String summary = summarizePlan(plan);
 

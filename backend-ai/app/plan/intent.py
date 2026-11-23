@@ -59,9 +59,19 @@ _ACCOMMODATION_KEYWORDS = {
 _CITY_STOPWORDS = {
     "哪里", "哪儿", "什么地方", "周边", "附近", "国内", "国外", "外地", "那边", "这里",
     "我想", "我要", "我想要", "想要", "打算", "准备", "计划", "帮我", "麻烦", "可以", "能不能",
+    # 方位/泛称：不是城市，用户自己也没确定，不能替他定
+    "南边", "北边", "东边", "西边", "南方", "北方", "东方", "西方", "海边", "山上", "首都",
+    "附近的城市", "一个不存在的地方", "不存在的地方", "出去", "出去玩", "看雪", "旅游", "旅游公司",
 }
 
 _CITY = r"[\u4e00-\u9fa5]{2,8}"
+
+# 句首的任务型请求（翻译/写代码/改简历）。这类句子即使后面带了完整旅行字段，
+# 用户要的也不是行程，必须按闲聊处理，否则会凭空生成一份计划。
+_NON_TRAVEL_TASK = re.compile(
+    r"^(?:请|帮我|帮忙|麻烦你?|能不能|可以)?\s*(?:把|将)?\s*(?:这|那|以下|下面)?\s*(?:段|篇|句|个)?\s*"
+    r"(?:中文|英文|日文|法文)?\s*(?:翻译|译成|译|润色|改写|写(?:一段|一个|份)?\s*(?:代码|脚本|程序|简历|周报|文章|文案))"
+)
 
 # 「帮我规划一下成都三天」这类口语前缀。不剥掉的话，"帮我规划成都" 整段会被当成城市名。
 # 规则版只覆盖高频说法；P3 换成模型判定后由模型直接输出槽位。
@@ -73,10 +83,8 @@ _INTENT_PREFIX = re.compile(
     r"|能不能|可以|给我|来(?:个|一份|一趟|次)?|想|要)\s*"
 )
 _ACTION_PREFIX = re.compile(
-    r"^(?:规划|安排|设计|定制|计划|做个|做一份|搞个|来个|整个|排个)\s*(?:一下|个|一份|一个|一趟)?\s*"
-)
-_DIRECTION_PREFIX = re.compile(r"^(?:出发去|去|到|至|飞往|前往)\s*")
-# 「从上海去成都」：出发地整段是修饰，剥掉后剩下的才是目的地
+    r"^(?:规划|安排|设计|定制|计划|做个|做一份|搞个|来个|整个|排个)\s*(?:一下|个|一份|一个|一趟)?\s*")
+_DIRECTION_PREFIX = re.compile(r"^(?:出发去|去|到|至|飞往|前往)\s*")# 「从上海去成都」：出发地整段是修饰，剥掉后剩下的才是目的地
 _ORIGIN_PREFIX = re.compile(r"^从[^，,。；;、\s]{2,8}?(?:出发)?(?:去|到|至|飞往|前往)\s*")
 
 
@@ -106,11 +114,24 @@ def _clean_city(value: str) -> str | None:
     """清洗抽到的城市名：去掉语气词与动词尾巴，过滤停用词。"""
     if not value:
         return None
+    value = value.strip()
+    # 前缀在句首剥不干净时（「把这段翻译成英文：我想去成都」），城市正则会把
+    # 「我想去」「再去」一起吞进来。这里对候选串反复剥前缀，剥到稳定为止。
+    for _ in range(3):
+        before = value
+        value = _INTENT_PREFIX.sub("", value)
+        value = _DIRECTION_PREFIX.sub("", value)
+        value = re.sub(r"^(?:再|又|然后|顺便|先|还)\s*", "", value)
+        if value == before:
+            break
     # 量词前缀：「给我一份成都三日游」剥掉「给我」后还剩「一份成都」
     value = re.sub(r"^(?:一份|一个|一张|一趟|一次|个|份)\s*", "", value.strip())
-    value = re.sub(r"(玩|旅游|旅行|出差|度假|逛|待着|呆着|的|了|吧|呢|呀|啊|一下|几天)+$", "", value.strip())
+    value = re.sub(r"(玩|旅游|旅行|出差|度假|逛|待着|呆着|看雪|看海|赏花|避暑|滑雪|爬山|上班|工作|的|了|吧|呢|呀|啊|一下|几天)+$", "", value.strip())
     value = value.strip(" ，,。.、！!？?")
     if not value or value in _CITY_STOPWORDS or len(value) < 2:
+        return None
+    # 「一个不存在的地方」「XX 的地方」是占位表述，不是地名
+    if value.endswith("的地方") or value.startswith("一个"):
         return None
     if not re.fullmatch(r"[\u4e00-\u9fa5]{2,8}", value):
         return None
@@ -258,8 +279,25 @@ def _extract_days(text: str) -> int | None:
     # 「三日游 / 五天行程」同样是天数，不能再把「日游」排除掉
     match = re.search(r"(?<![0-9月])([0-9]{1,2}|[一二三四五六七八九十两]{1,3})\s*[天日]", text)
     if not match:
-        return None
+        return _extract_weeks(text)
     return _cn_to_int(match.group(1))
+
+
+def _extract_weeks(text: str) -> int | None:
+    """「玩一周」「两个星期」也算天数。
+
+    必须排除「下周一出发」「这周末」：那里的一/二/三/日/末是星期几，不是周数
+    （前面有下/上/这/本/当，后面紧跟一二三四五六日末天）。
+    """
+    match = re.search(r"(?<![下上这本当])([0-9]{1,2}|[一二三四五六七八九十两]{1,3}|半)\s*(?:个)?\s*(?:周|星期|礼拜)(?![一二三四五六日末天])", text)
+    if not match:
+        return None
+    unit = match.group(1)
+    weeks = 0.5 if unit == "半" else _cn_to_int(unit)
+    if not weeks:
+        return None
+    days = int(weeks * 7)
+    return days if 1 <= days <= 30 else None
 
 
 def _extract_travelers(text: str) -> int | None:
@@ -353,7 +391,8 @@ def analyze(text: str, today: date | None = None) -> TravelIntent:
 
     start_date, end_date, without_dates = _extract_dates(raw, today)
     days = _extract_days(without_dates)
-    if days and (days < 1 or days > 30):
+    # 注意必须用 is not None：0 是 falsy，写成 if days and ... 会让「0 天」原样流进计划
+    if days is not None and (days < 1 or days > 30):
         days = None
 
     destinations = _extract_destinations(without_dates)
@@ -381,6 +420,11 @@ def analyze(text: str, today: date | None = None) -> TravelIntent:
     if slots["startDate"] and slots["days"] and not slots["endDate"]:
         delta = timedelta(days=slots["days"] - 1)
         slots["endDate"] = (date.fromisoformat(slots["startDate"]) + delta).isoformat()
+
+    # 任务型需求优先：「把这段翻译成英文：我想去成都玩三天」里有完整旅行字段，
+    # 但用户要的是翻译。只看句首的任务动词，避免把真行程需求也拦掉。
+    if _NON_TRAVEL_TASK.match(raw):
+        return TravelIntent(scene="general", need_plan=False, slots=slots, missing_fields=[])
 
     has_signal = bool(
         slots["destination"] or slots["days"] or start_date
