@@ -53,7 +53,13 @@ app:
     access-token-minutes: 120
   ai:
     connect-timeout-ms: 5000
-    read-timeout-ms: 180000
+    # 与 dev/prod 保持一致：交融网关 7 天行程实测 160–210s，180s 会误杀长尾（BUG-013）
+    read-timeout-ms: 300000
+    plan-timeout-ms: 300000
+    adjust-timeout-ms: 180000
+    # 并行度与排队上限：详见 AiStreamConfig 的注释与可靠性报告 §5
+    stream-pool-size: 8
+    stream-queue-capacity: 0
 
 logging:
   level:

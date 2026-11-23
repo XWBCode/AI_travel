@@ -1,0 +1,149 @@
+{
+  "at": "2026-11-23T21:38:05",
+  "concurrency": 8,
+  "ok": 8,
+  "rejectedByPool": 0,
+  "upstreamErrors": 0,
+  "wallMs": 203317,
+  "p50Ms": 132743,
+  "maxMs": 203314,
+  "codeHistogram": {},
+  "results": [
+    {
+      "i": 1,
+      "input": "帮我规划成都三天，两个人，预算五千，喜欢美食和历史文化",
+      "ms": 121869,
+      "ok": true,
+      "planId": "2124859695837638658",
+      "errors": [],
+      "events": [
+        "delta",
+        "done",
+        "intent",
+        "meta",
+        "plan_draft",
+        "plan_progress",
+        "plan_saved"
+      ]
+    },
+    {
+      "i": 2,
+      "input": "我想去西安玩四天，一个人，喜欢历史",
+      "ms": 143715,
+      "ok": true,
+      "planId": "2124859787478986754",
+      "errors": [],
+      "events": [
+        "delta",
+        "done",
+        "intent",
+        "meta",
+        "plan_draft",
+        "plan_progress",
+        "plan_saved"
+      ]
+    },
+    {
+      "i": 3,
+      "input": "帮我规划厦门三天，爱吃海鲜，想住海边",
+      "ms": 137851,
+      "ok": true,
+      "planId": "2124859762908753922",
+      "errors": [],
+      "events": [
+        "delta",
+        "done",
+        "intent",
+        "meta",
+        "plan_draft",
+        "plan_progress",
+        "plan_saved"
+      ]
+    },
+    {
+      "i": 4,
+      "input": "去杭州玩两天，带父母，节奏慢一点",
+      "ms": 127635,
+      "ok": true,
+      "planId": "2124859720097492993",
+      "errors": [],
+      "events": [
+        "delta",
+        "done",
+        "intent",
+        "meta",
+        "plan_draft",
+        "plan_progress",
+        "plan_saved"
+      ]
+    },
+    {
+      "i": 5,
+      "input": "想去云南玩五天，喜欢自然风光",
+      "ms": 144683,
+      "ok": true,
+      "planId": "2124859791576821762",
+      "errors": [],
+      "events": [
+        "delta",
+        "done",
+        "intent",
+        "meta",
+        "plan_draft",
+        "plan_progress",
+        "plan_saved"
+      ]
+    },
+    {
+      "i": 6,
+      "input": "帮我规划青岛三天，两个人，预算四千",
+      "ms": 126693,
+      "ok": true,
+      "planId": "2124859716041601025",
+      "errors": [],
+      "events": [
+        "delta",
+        "done",
+        "intent",
+        "meta",
+        "plan_draft",
+        "plan_progress",
+        "plan_saved"
+      ]
+    },
+    {
+      "i": 7,
+      "input": "去重庆玩三天，喜欢火锅和夜景",
+      "ms": 203314,
+      "ok": true,
+      "planId": "2124860037501448194",
+      "errors": [],
+      "events": [
+        "delta",
+        "done",
+        "intent",
+        "meta",
+        "plan_draft",
+        "plan_progress",
+        "plan_saved"
+      ]
+    },
+    {
+      "i": 8,
+      "input": "帮我规划长沙两天，一个人，预算一千五",
+      "ms": 99994,
+      "ok": true,
+      "planId": "2124859604162736130",
+      "errors": [],
+      "events": [
+        "delta",
+        "done",
+        "intent",
+        "meta",
+        "plan_draft",
+        "plan_progress",
+        "plan_saved"
+      ]
+    }
+  ]
+}

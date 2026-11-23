@@ -1,0 +1,217 @@
+{
+  "at": "2026-11-23T21:43:10",
+  "concurrency": 12,
+  "ok": 12,
+  "rejectedByPool": 0,
+  "upstreamErrors": 0,
+  "wallMs": 298799,
+  "p50Ms": 132301,
+  "maxMs": 298794,
+  "codeHistogram": {},
+  "results": [
+    {
+      "i": 1,
+      "input": "帮我规划成都三天，两个人，预算五千，喜欢美食和历史文化",
+      "ms": 196636,
+      "ok": true,
+      "planId": "2124860886806065153",
+      "errors": [],
+      "events": [
+        "delta",
+        "done",
+        "intent",
+        "meta",
+        "plan_draft",
+        "plan_progress",
+        "plan_saved"
+      ]
+    },
+    {
+      "i": 2,
+      "input": "我想去西安玩四天，一个人，喜欢历史",
+      "ms": 183316,
+      "ok": true,
+      "planId": "2124860830967296001",
+      "errors": [],
+      "events": [
+        "delta",
+        "done",
+        "intent",
+        "meta",
+        "plan_draft",
+        "plan_progress",
+        "plan_saved"
+      ]
+    },
+    {
+      "i": 3,
+      "input": "帮我规划厦门三天，爱吃海鲜，想住海边",
+      "ms": 134622,
+      "ok": true,
+      "planId": "2124860626729857026",
+      "errors": [],
+      "events": [
+        "delta",
+        "done",
+        "intent",
+        "meta",
+        "plan_draft",
+        "plan_progress",
+        "plan_saved"
+      ]
+    },
+    {
+      "i": 4,
+      "input": "去杭州玩两天，带父母，节奏慢一点",
+      "ms": 206784,
+      "ok": true,
+      "planId": "2124860929415999489",
+      "errors": [],
+      "events": [
+        "delta",
+        "done",
+        "intent",
+        "meta",
+        "plan_draft",
+        "plan_progress",
+        "plan_saved"
+      ]
+    },
+    {
+      "i": 5,
+      "input": "想去云南玩五天，喜欢自然风光",
+      "ms": 167922,
+      "ok": true,
+      "planId": "2124860766421151746",
+      "errors": [],
+      "events": [
+        "delta",
+        "done",
+        "intent",
+        "meta",
+        "plan_draft",
+        "plan_progress",
+        "plan_saved"
+      ]
+    },
+    {
+      "i": 6,
+      "input": "帮我规划青岛三天，两个人，预算四千",
+      "ms": 94975,
+      "ok": true,
+      "planId": "2124860460484423681",
+      "errors": [],
+      "events": [
+        "delta",
+        "done",
+        "intent",
+        "meta",
+        "plan_draft",
+        "plan_progress",
+        "plan_saved"
+      ]
+    },
+    {
+      "i": 7,
+      "input": "去重庆玩三天，喜欢火锅和夜景",
+      "ms": 127503,
+      "ok": true,
+      "planId": "2124860596891578369",
+      "errors": [],
+      "events": [
+        "delta",
+        "done",
+        "intent",
+        "meta",
+        "plan_draft",
+        "plan_progress",
+        "plan_saved"
+      ]
+    },
+    {
+      "i": 8,
+      "input": "帮我规划长沙两天，一个人，预算一千五",
+      "ms": 94832,
+      "ok": true,
+      "planId": "2124860459830112258",
+      "errors": [],
+      "events": [
+        "delta",
+        "done",
+        "intent",
+        "meta",
+        "plan_draft",
+        "plan_progress",
+        "plan_saved"
+      ]
+    },
+    {
+      "i": 9,
+      "input": "想去南京玩四天，喜欢博物馆",
+      "ms": 79465,
+      "ok": true,
+      "planId": "2124860395393019905",
+      "errors": [],
+      "events": [
+        "delta",
+        "done",
+        "intent",
+        "meta",
+        "plan_draft",
+        "plan_progress",
+        "plan_saved"
+      ]
+    },
+    {
+      "i": 10,
+      "input": "去苏州玩三天，两个人，喜欢园林",
+      "ms": 129980,
+      "ok": true,
+      "planId": "2124860607289257985",
+      "errors": [],
+      "events": [
+        "delta",
+        "done",
+        "intent",
+        "meta",
+        "plan_draft",
+        "plan_progress",
+        "plan_saved"
+      ]
+    },
+    {
+      "i": 11,
+      "input": "帮我规划桂林四天，喜欢山水",
+      "ms": 117543,
+      "ok": true,
+      "planId": "2124860555070173185",
+      "errors": [],
+      "events": [
+        "delta",
+        "done",
+        "intent",
+        "meta",
+        "plan_draft",
+        "plan_progress",
+        "plan_saved"
+      ]
+    },
+    {
+      "i": 12,
+      "input": "去大理玩五天，一个人，预算三千",
+      "ms": 298794,
+      "ok": true,
+      "planId": "2124861315291967489",
+      "errors": [],
+      "events": [
+        "delta",
+        "done",
+        "intent",
+        "meta",
+        "plan_draft",
+        "plan_progress",
+        "plan_saved"
+      ]
+    }
+  ]
+}

@@ -28,6 +28,10 @@ app:
     read-timeout-ms: ${AI_READ_TIMEOUT_MS:300000}
     plan-timeout-ms: ${AI_PLAN_TIMEOUT_MS:300000}
     adjust-timeout-ms: ${AI_ADJUST_TIMEOUT_MS:180000}
+    # 并发上限：8 并发实测 P50 132.7s（串行 127.4s），再往上会被队列吸收成长尾；
+    # 队列封顶后超出的请求立刻 10429，而不是静默排队
+    stream-pool-size: ${AI_STREAM_POOL_SIZE:8}
+    stream-queue-capacity: ${AI_STREAM_QUEUE_CAPACITY:0}
 
 logging:
   level:
