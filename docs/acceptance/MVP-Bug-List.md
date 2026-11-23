@@ -24,6 +24,7 @@
 | BUG-012 | P1 | SSE 连接上限 240s 短于 AI 等待上限 300s，长尾会被「连接先断」误杀 | **已修复** | 本轮：由配置推导 `max(plan,read)+30s` |
 | BUG-013 | P1 | 生成超时硬编码 180s，交融网关的 7 天行程 130–160s 长尾被判成「服务宕机」 | **已修复** | `01379cc`：三个超时全部配置化 |
 | BUG-014 | P2 | 校验器要求跨城段 `fromDayIndex < toDayIndex`，提示词没写，模型输出 3→3 被整份拒绝 | **已修复** | 本轮：规则 6/7/2 补齐（见下方） |
+| BUG-015 | P2 | 本地 `.env` 让单测真的调模型：2 条用例失败，且每次跑测试都在花钱 | **已修复** | 本轮：`tests/conftest.py` 强制 mock（见下方） |
 
 ---
 
@@ -276,3 +277,36 @@ S-6 /days/2/transportSegments/1 : 跨城段必须 fromDayIndex < toDayIndex，�
 **遗留判断**：提示词与校验器的漂移是结构性问题，靠「这次记得同步」不解决。
 理想做法是把 S-1~S-6 抽成一份机器可读清单，生成提示词片段，模型与校验器读同一份。
 这属于 M3 之前的工程债，不在本轮做。
+
+---
+
+## BUG-015（P2，已修复）本地 `.env` 让单测真的去调模型
+
+**怎么发现的**：写 CI 本地脚本时「顺手」把 `.env` 加载进来（想复用数据库口令），
+结果 `pytest` 立刻红了 2 条：
+
+```
+FAILED tests/test_adjust.py::test_endpoint_returns_ops_for_mock_provider
+FAILED tests/test_plan.py::test_plan_stream_sse - assert False is True
+```
+
+**根因**：`app/config.py` 的优先级是「环境变量 > config.yaml」，而测试模块里写的是
+`os.environ.setdefault("LLM_PROVIDER", "mock")` —— `setdefault` 遇到已经存在的
+`LLM_PROVIDER=openai_compatible` 就什么都不做。于是：
+
+- 单元测试真的发 HTTP 到交融网关（跑一次 102 秒，之前 0.7 秒，就是因为**在等模型**）；
+- 断言 `mock: true` 的两条用例必然失败；
+- 更要紧的是：**每次跑单测都在消耗公司额度**，而且没人知道。
+
+CI 里没有 `.env`，所以一直显示绿的——「本地红、CI 绿」的镜像问题，比反过来更难发现。
+
+**修复**：新增 `backend-ai/tests/conftest.py`，在**任何测试模块导入 `app.main` 之前**
+把 `LLM_PROVIDER` 强制写回 `mock`（并清空 key、把 base_url 指到不可达地址）。
+选「强制」而不是 `setdefault`：测试不该因为开发机配了真实 key 就改变行为。
+
+**验证**：`bash scripts/ci-local.sh --fast` 全绿，pytest 回到 **0.7 秒**（真调模型时 102 秒，
+这个耗时差本身就是判据）。需要真实 provider 的用例（provider 错误分型）自己构造对象显式传参，
+不依赖环境变量。
+
+**顺带的产物**：这一轮同时落了 `.github/workflows/ci.yml` 与 `scripts/ci-local.sh`，
+两处跑的是同一组命令；CI 用 MySQL service 容器跑集成测试，不跑真实模型（密钥不进 CI）。
