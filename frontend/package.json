@@ -8,7 +8,7 @@
     "build": "vue-tsc --noEmit && vite build",
     "build:only": "vite build",
     "preview": "vite preview",
-    "test": "npm run test:proxy && npm run test:stream-error && npm run test:followup && npm run test:plan-edit && npm run test:plan-progress && npm run test:rollback && npm run test:today && npm run test:adjust && npm run test:notification && npm run test:plan-facts && npm run test:sse-frame",
+    "test": "npm run test:proxy && npm run test:stream-error && npm run test:followup && npm run test:plan-edit && npm run test:plan-progress && npm run test:rollback && npm run test:today && npm run test:adjust && npm run test:notification && npm run test:plan-facts && npm run test:sse-frame && npm run test:weather",
     "test:proxy": "node scripts/proxy-error.test.mjs",
     "test:stream-error": "node scripts/stream-error.test.mjs",
     "test:followup": "node scripts/followup.test.mjs",
@@ -19,7 +19,8 @@
     "test:adjust": "node scripts/adjustment.test.mjs",
     "test:notification": "node scripts/notification.test.mjs",
     "test:plan-facts": "node scripts/plan-facts.test.mjs",
-    "test:sse-frame": "node scripts/sse-frame.test.mjs"
+    "test:sse-frame": "node scripts/sse-frame.test.mjs",
+    "test:weather": "node scripts/weather.test.mjs"
   },
   "dependencies": {
     "axios": "^1.7.9",

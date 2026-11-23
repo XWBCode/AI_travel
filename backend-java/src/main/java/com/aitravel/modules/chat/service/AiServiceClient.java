@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -49,12 +50,15 @@ public class AiServiceClient {
     /** 计划生成与调整建议的上限（非流式，整包返回） */
     private final Duration planTimeout;
     private final Duration adjustTimeout;
+    /** 天气查询上限（M3-1）：页面附属信息，慢到 5s 就该降级 */
+    private final Duration weatherTimeout;
 
     public AiServiceClient(com.aitravel.common.config.AiServiceProperties props) {
         this.baseUrl = props.getBaseUrl();
         this.readTimeout = Duration.ofMillis(props.getReadTimeoutMs());
         this.planTimeout = Duration.ofMillis(props.getPlanTimeoutMs());
         this.adjustTimeout = Duration.ofMillis(props.getAdjustTimeoutMs());
+        this.weatherTimeout = Duration.ofMillis(props.getWeatherTimeoutMs());
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(props.getConnectTimeoutMs()))
                 // SSE 走 HTTP/1.1：明文 HTTP/2 升级（h2c）对 uvicorn 无意义，只会让对端收到畸形请求
@@ -271,6 +275,52 @@ public class AiServiceClient {
             return root.path("data");
         } catch (IOException e) {
             log.warn("意图判定调用失败，本次按普通对话处理: {}", e.getMessage());
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        }
+    }
+
+    /**
+     * 查询逐日天气（M3-1）。
+     * <p>
+     * <b>失败一律返回 null，不抛异常</b>：天气是计划详情页的附属信息，
+     * 它挂了不该让整页失败。调用方（PlanWeatherService）拿到 null 后转成
+     * {@code UPSTREAM_ERROR} 降级，用户看到的是一行提示而不是白屏。
+     * <p>
+     * 可预期的失败（城市未知、超出预报窗口、上游超时……）由 Python 侧用
+     * {@code ok=false + reason} 表达，这里原样带回，不在 Java 翻译——
+     * 文案归前端、判断归服务，中间的传输层不掺业务语义。
+     *
+     * @param city      计划里的城市，可为中文（会做 URL 编码）
+     * @param startDate 出发日期 {@code yyyy-MM-dd}；为 null 表示计划没有日期
+     * @param days      需要几天
+     * @return Python 的响应体；服务不可用或响应非法时为 {@code null}
+     */
+    public JsonNode fetchWeather(String city, String startDate, int days, String traceId) {
+        String query = "?days=" + days
+                + "&city=" + URLEncoder.encode(city == null ? "" : city, StandardCharsets.UTF_8)
+                + "&start_date=" + URLEncoder.encode(startDate == null ? "" : startDate, StandardCharsets.UTF_8);
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/weather" + query))
+                .header("Accept", "application/json")
+                .header("X-Trace-Id", traceId == null ? "" : traceId)
+                .timeout(weatherTimeout)
+                .GET()
+                .build();
+
+        try {
+            HttpResponse<String> response = httpClient.send(request,
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (response.statusCode() != 200) {
+                log.warn("天气查询返回状态码 {}（按降级处理）", response.statusCode());
+                return null;
+            }
+            return objectMapper.readTree(response.body());
+        } catch (IOException e) {
+            log.warn("天气查询失败（按降级处理）: {}", e.getMessage());
             return null;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

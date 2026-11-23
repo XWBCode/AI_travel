@@ -15,6 +15,7 @@ import type {
   PlanTodayVO,
   PlanUpdatePayload,
   PlanVersionVO,
+  PlanWeatherVO,
   SessionVO,
   TravelPlan,
   UserVO,
@@ -80,6 +81,16 @@ export const plansApi = {
   /** 执行进度。任何状态可读，草稿阶段返回全 0 */
   progress: (id: Id) =>
     http.get<ApiResult<PlanProgressVO>>(`/plans/${id}/progress`).then((r) => r.data.data),
+
+  /**
+   * 计划天气（M3-1）。
+   *
+   * 注意：**降级不抛异常**。后端用 `available=false + reason` 表达"暂时没有天气"，
+   * 所以这里不做 catch 分支的文案——调用方拿到的永远是一个可判断的对象。
+   * 只有鉴权失败/计划不属于当前用户才会 reject（那是真的错误，页面本来就该失败）。
+   */
+  weather: (id: Id) =>
+    http.get<ApiResult<PlanWeatherVO>>(`/plans/${id}/weather`).then((r) => r.data.data),
 
   /**
    * 当日执行视图。date 传本机今天（YYYY-MM-DD）：服务端时区与用户所在时区可能差一天，

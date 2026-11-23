@@ -11,6 +11,7 @@ import {
   type PlanProgressVO,
   type PlanTodayVO,
   type PlanVersionVO,
+  type PlanWeatherVO,
   type ProgressItem,
   type TravelPlan,
 } from '@/api/types'
@@ -19,6 +20,7 @@ import PlanAdjustDialog from '@/components/PlanAdjustDialog.vue'
 import PlanEditDialog from '@/components/PlanEditDialog.vue'
 import PlanStartDialog from '@/components/PlanStartDialog.vue'
 import PlanTodayPanel from '@/components/PlanTodayPanel.vue'
+import WeatherStrip from '@/components/WeatherStrip.vue'
 import { canRollback, canRollbackTo, rollbackConfirmText, rollbackSuccessText, versionLabel } from '@/utils/rollback'
 import { groupUnverified } from '@/utils/planFacts'
 import { clientDate, defaultScheduleView } from '@/utils/today'
@@ -56,6 +58,11 @@ const scheduleView = ref<'today' | 'all'>('all')
 const startDialog = ref(false)
 /** 调整建议框：只有已确认 / 进行中才有意义，草稿直接编辑更快 */
 const adjusting = ref(false)
+/**
+ * 天气（M3-1）。null = 还没拿到（或请求失败），此时整块不渲染——
+ * 与 available=false 区分开：后者是"确实没有天气"，要显示原因。
+ */
+const weather = ref<PlanWeatherVO | null>(null)
 
 const planId = computed(() => String(route.params.id ?? ''))
 const status = computed(() => plan.value?.status ?? '')
@@ -98,6 +105,9 @@ async function load(): Promise<void> {
     // 版本列表与进度都是补充信息，失败不该拖垮整页
     versions.value = await plansApi.versions(planId.value).catch(() => [])
     progress.value = await plansApi.progress(planId.value).catch(() => null)
+    // 天气同样只是补充信息：接口本身用 available=false 表达"没有天气"，
+    // 这里的 catch 只兜「请求本身失败」（断网/500），此时整块不渲染，页面其余照旧
+    weather.value = await plansApi.weather(planId.value).catch(() => null)
     await loadToday()
     scheduleView.value = defaultScheduleView(status.value, today.value)
   } catch {
@@ -302,6 +312,17 @@ function dayTitle(day: PlanDay): string {
   return day.date ? `${day.date}` : `第 ${day.dayIndex} 天`
 }
 
+/**
+ * 「补充出发日期」入口（M3-1，日期口径 C）。
+ *
+ * 复用已有的两个入口，不新增接口：草稿阶段去编辑框补日期；
+ * 已确认/进行中用「开始行程」对话框确认出发日（那里是唯一能把「第几天」钉到真实日期的入口）。
+ */
+function anchorDate(): void {
+  if (status.value === 'DRAFT') editing.value = true
+  else startDialog.value = true
+}
+
 function formatTime(value?: string): string {
   if (!value) return ''
   const date = new Date(value)
@@ -414,6 +435,18 @@ onBeforeUnmount(() => {
           <span class="missing-item" v-for="item in missingItems" :key="item">{{ item }}</span>
           <span class="missing-hint">补充后行程会更贴合实际情况（在对话里说一句就行）</span>
         </div>
+
+        <!--
+          天气（M3-1）。位置按 PM 的决定：基本信息下方、行程列表上方——
+          用户进详情页第一眼要能判断「这几天合适吗」，塞进每天行程里就失去了概览价值。
+          available=false 时同位置显示一行原因，不把这块从布局里抽掉，免得页面高度来回跳。
+        -->
+        <WeatherStrip
+          v-if="weather"
+          :weather="weather"
+          :can-anchor="status !== 'COMPLETED' && status !== 'CANCELLED'"
+          @anchor="anchorDate"
+        />
 
         <!-- 执行进度：进行中才可勾选，已完成只读。草稿/已确认还没出发，不占版面 -->
         <div

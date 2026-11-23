@@ -357,3 +357,54 @@ export interface NotificationPageVO {
   size: number
   unreadCount: number
 }
+
+/**
+ * 天气降级原因（M3-1）。与后端 `PlanWeatherVO.reason` 逐字一致。
+ *
+ * 这些不是错误码，而是「为什么没有天气」的枚举——每一种对应一句用户能看懂、
+ * 且能区分「我能做点什么」还是「只能等」的提示。
+ */
+export type WeatherReason =
+  | 'PROVIDER_DISABLED'
+  | 'NO_START_DATE'
+  | 'NO_CITY'
+  | 'CITY_UNKNOWN'
+  | 'DATE_OUT_OF_RANGE'
+  | 'UPSTREAM_TIMEOUT'
+  | 'UPSTREAM_ERROR'
+
+/** 一天的天气：四组 FactField 原样来自后端，展示层只读 `display` / `verified` */
+export interface PlanWeatherDay {
+  /** 相对整段行程的天序号，不是相对返回结果的第一天 */
+  dayIndex: number
+  date: string
+  /** 计划里的原始写法，如「云南」 */
+  city?: string | null
+  /** 实际取坐标的城市，如「昆明」 */
+  resolvedCity?: string | null
+  weather?: FactField | null
+  temperature?: FactField | null
+  precipitation?: FactField | null
+  wind?: FactField | null
+}
+
+/**
+ * `GET /api/plans/{id}/weather`（M3-1）。
+ *
+ * `available=false` 时 `days` 为空、`reason` 有值——这是正常响应而不是错误，
+ * 页面照常渲染，只把天气区域换成一行提示。
+ */
+export interface PlanWeatherVO {
+  available: boolean
+  reason?: WeatherReason | string | null
+  message?: string | null
+  source?: string | null
+  /** CC BY 4.0 要求署名，有数据时必须原样展示 */
+  attribution?: string | null
+  fetchedAt?: string | null
+  expiresAt?: string | null
+  note?: string | null
+  /** 缓存过期且刷新失败：数据是上次的，必须标出来 */
+  stale?: boolean
+  days: PlanWeatherDay[]
+}

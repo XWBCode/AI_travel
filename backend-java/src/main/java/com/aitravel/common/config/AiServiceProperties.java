@@ -74,4 +74,13 @@ public class AiServiceProperties {
      * 心跳本身是 SSE 注释行 {@code : ping}，不产生前端事件，也不消耗模型额度。
      */
     private long sseHeartbeatIntervalMs = 15000L;
+
+    /**
+     * 天气查询（/v1/weather）的上限。
+     * <p>
+     * 给 5s 的依据：Python 对上游是 connect 2s + read 3s，正常情况 1.5s 内返回。
+     * 这是**页面附属信息**，超过 5s 就该降级成「天气暂不可用」而不是让用户等——
+     * 也绝不复用 300s 的 readTimeout，否则上游一慢，详情页就跟着一起卡。
+     */
+    private int weatherTimeoutMs = 5000;
 }
