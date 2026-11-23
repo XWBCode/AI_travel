@@ -54,18 +54,40 @@ class LLMSettings:
 class WeatherSettings:
     """天气数据源配置。
 
-    `provider` 默认 **none**：免费端点禁商用（Open-Meteo 条款），生产不能默默打开。
-    开发/演示环境显式设 `WEATHER_PROVIDER=open-meteo` 才生效。
+    `provider` 默认 **none**：D-03 定案后生产用和风天气，但凭据不在仓库里，
+    所以默认值必须是"关"，不能因为"我们已经接了商用源"就默认启用——
+    没有凭据的默认启用只会让每个部署都返回一次 401，还可能触发对方的风控。
+
+    provider 取值：`none` | `qweather` | `open-meteo`
+    （`open-meteo` 仅用于 CI/本地无凭据联调，其免费端点禁商用且要求 CC BY 署名）
     """
 
-    provider: str = "none"            # none | open-meteo
+    provider: str = "none"            # none | qweather | open-meteo
     timeout_seconds: float = 3.0
     connect_timeout_seconds: float = 2.0
-    cache_ttl_minutes: int = 30
+    # 官方"逐天预报推荐缓存 1–6 小时"取 1 小时；另受"次日 00:10 必须失效"约束
+    cache_ttl_minutes: int = 60
+    # 熔断：连续软失败次数 / 冷却秒数（硬错误直接进最长冷却，不看这两个值）
+    circuit_failure_threshold: int = 3
+    circuit_cooldown_seconds: float = 300.0
+
+    # ===== 和风天气凭据（D-03）=====
+    # API Host 是**每个开发者的专属域名**，从控制台-设置复制；用错直接 403 INVALID HOST
+    qweather_api_host: str = ""
+    qweather_developer_id: str = ""     # Q 开头 10 位，控制台-设置
+    qweather_project_id: str = ""       # 控制台-项目管理
+    qweather_key_id: str = ""           # 凭据ID，控制台-项目管理
+    # 私钥：优先用文件路径（不入仓库、不进日志）；CI 里可用内联内容
+    qweather_private_key_path: str = ""
+    qweather_private_key_pem: str = field(default="", repr=False)
 
     @property
     def enabled(self) -> bool:
         return self.provider not in ("", "none", None)
+
+    @property
+    def is_qweather(self) -> bool:
+        return (self.provider or "").strip().lower() == "qweather"
 
 
 @dataclass
@@ -103,7 +125,28 @@ class Settings:
             connect_timeout_seconds=float(
                 _env("WEATHER_CONNECT_TIMEOUT_SECONDS", weather_raw.get("connect_timeout_seconds", 2.0))
             ),
-            cache_ttl_minutes=int(_env("WEATHER_CACHE_TTL_MINUTES", weather_raw.get("cache_ttl_minutes", 30))),
+            cache_ttl_minutes=int(_env("WEATHER_CACHE_TTL_MINUTES", weather_raw.get("cache_ttl_minutes", 60))),
+            circuit_failure_threshold=int(
+                _env("WEATHER_CIRCUIT_FAILURE_THRESHOLD", weather_raw.get("circuit_failure_threshold", 3))
+            ),
+            circuit_cooldown_seconds=float(
+                _env("WEATHER_CIRCUIT_COOLDOWN_SECONDS", weather_raw.get("circuit_cooldown_seconds", 300))
+            ),
+            qweather_api_host=str(
+                _env("QWEATHER_API_HOST", weather_raw.get("qweather_api_host", "")) or ""
+            ),
+            qweather_developer_id=str(
+                _env("QWEATHER_DEVELOPER_ID", weather_raw.get("qweather_developer_id", "")) or ""
+            ),
+            qweather_project_id=str(
+                _env("QWEATHER_PROJECT_ID", weather_raw.get("qweather_project_id", "")) or ""
+            ),
+            qweather_key_id=str(_env("QWEATHER_KEY_ID", weather_raw.get("qweather_key_id", "")) or ""),
+            qweather_private_key_path=str(
+                _env("QWEATHER_PRIVATE_KEY_PATH", weather_raw.get("qweather_private_key_path", "")) or ""
+            ),
+            # 私钥内容只允许走环境变量/密钥文件，不读 config.yaml——那个文件是入库的
+            qweather_private_key_pem=str(_env("QWEATHER_PRIVATE_KEY_PEM", "") or ""),
         )
 
         return cls(

@@ -24,7 +24,7 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from app.plan.contract import load_schema
-from app.tools import weather
+from app.tools import weather, weather_circuit
 from app.tools.weather import (
     R_CITY_UNKNOWN,
     R_DATE_OUT_OF_RANGE,
@@ -36,12 +36,25 @@ from app.tools.weather import (
     fetch_forecast,
     forecast_window,
     resolve_city,
-    weather_text,
-    wind_level,
 )
+from app.tools.weather_providers.base import NormalizedDay
+from app.tools.weather_providers.open_meteo import weather_text, wind_level
 
 TZ = timezone(timedelta(hours=8), "Asia/Shanghai")
 NOW = datetime(2026, 11, 23, 22, 40, tzinfo=TZ)
+
+
+@pytest.fixture(autouse=True)
+def _reset_breaker():
+    """每个用例都从"熔断器关闭"开始。
+
+    熔断器是有状态的进程级单例，不重置的话「失败用例」会把熔断打开，
+    后面的「成功用例」就会莫名其妙拿到 UPSTREAM_ERROR —— 也就是"靠执行顺序才绿"，
+    这正是 BUG-017 那一类问题，不能在新代码里再种一次。
+    """
+    weather_circuit.reset_all()
+    yield
+    weather_circuit.reset_all()
 
 
 def _daily(days: int, start: date, **overrides: list[Any]) -> dict[str, list[Any]]:
@@ -157,10 +170,10 @@ def test_weather_code_covers_every_open_meteo_code():
     known = {0, 1, 2, 3, 45, 48, 51, 53, 55, 56, 57, 61, 63, 65, 66, 67,
              71, 73, 75, 77, 80, 81, 82, 85, 86, 95, 96, 99}
     for code in sorted(known):
-        assert weather_text(code) != "未知", f"WMO {code} 没有中文映射"
-    # 不在表里的码不许猜，统一"未知"
-    assert weather_text(12345) == "未知"
-    assert weather_text(None) == "未知"
+        assert weather_text(code) is not None, f"WMO {code} 没有中文映射"
+    # 不在表里的码不许猜，统一降级成"没拿到"（契约里 value 必须是 null，不能是"未知"）
+    assert weather_text(12345) is None
+    assert weather_text(None) is None
 
 
 def test_wind_level_boundaries():
@@ -329,14 +342,28 @@ def test_request_params_carry_window_and_coordinates():
 
 
 def test_build_day_is_pure_and_matches_helpers():
-    """build_day 单独可用（Java 侧缓存回填时会复用同样的形状）。"""
+    """build_day 只吃 `NormalizedDay`，不认识任何上游字段名——这是换源时 Java/Vue 不用动的原因。"""
     coord = resolve_city("成都")
     day = build_day(
-        date(2026, 11, 24), 1, coord, _daily(1, date(2026, 11, 24)), 0,
-        "2026-11-23T22:40:00+08:00", "2026-11-23T23:10:00+08:00",
+        NormalizedDay(
+            date=date(2026, 11, 24),
+            weather_text="多云",
+            temp_max=16.0,
+            temp_min=12.0,
+            temp_mean=14.0,
+            precip_prob=6.0,
+            wind_scale=3,
+            wind_speed_ms=5.0,
+        ),
+        1,
+        coord,
+        "2026-11-23T22:40:00+08:00",
+        "2026-11-23T23:40:00+08:00",
+        "OPEN_METEO",
     )
     assert day["weather"]["display"] == "多云"
     assert day["temperature"]["display"] == "12–16℃"
+    assert day["wind"]["display"] == "3级风"
 
 
 # ------------------------------------------------------------------ 端点

@@ -11,6 +11,9 @@
  * 运行：npm run test:weather
  */
 import {
+  ATTRIBUTION_FALLBACK,
+  attributionText,
+  attributionUrl,
   canFixByUser,
   cityNote,
   fieldText,
@@ -118,13 +121,23 @@ check('整天空数据时不显示任何数字', [blankRow.weather, blankRow.tem
 // ---------------- 署名 / 时效 / 旧值 ----------------
 const NOW = new Date('2026-11-23T23:03:00+08:00')
 check('署名必须出现', sourceLine(OK, NOW).includes('Open-Meteo'), true)
-check('attribution 缺失时退回固定署名（不能因为后端没给就不署）', sourceLine({ ...OK, attribution: undefined }, NOW).includes('Open-Meteo'), true)
+// 兜底署名不写死某一家：D-03 换源后「数据来源 Open-Meteo」就是一句假话
+check('attribution 缺失时退回中性署名（不能因为后端没给就不署）', sourceLine({ ...OK, attribution: undefined }, NOW).includes(ATTRIBUTION_FALLBACK), true)
+check('兜底署名不点名任何 provider', attributionText({ ...OK, attribution: '' }).includes('Open-Meteo'), false)
 check('相对时效：23 分钟前', relativeTime('2026-11-23T22:40:00+08:00', NOW), '23 分钟前')
 check('相对时效：1 分钟内算刚刚', relativeTime('2026-11-23T23:02:30+08:00', NOW), '刚刚')
 check('相对时效：跨小时', relativeTime('2026-11-23T21:40:00+08:00', NOW), '1 小时前')
 check('相对时效：跨天', relativeTime('2026-11-21T22:40:00+08:00', NOW), '2 天前')
 check('没有时间就不显示这一段', sourceLine({ ...OK, fetchedAt: undefined }, NOW).includes('更新于'), false)
 check('降级时没有署名行', sourceLine({ available: false, reason: 'NO_START_DATE', days: [] }, NOW), '')
+
+// 归因链接：和风天气条款要求「和风天气 / QWeather + 超链」，只写文字不合规
+check('和风天气 → 官方链接', attributionUrl('天气服务由和风天气驱动'), 'https://www.qweather.com')
+check('QWeather 英文写法也能匹配', attributionUrl('QWeather'), 'https://www.qweather.com')
+check('Open-Meteo（开发源）也能匹配', attributionUrl(ATTR), 'https://open-meteo.com')
+check('认不出的归因不编链接', attributionUrl('某天气服务'), '')
+check('归因为空不编链接', attributionUrl(''), '')
+check('链接锚文本就是后端给的原文', attributionText({ ...OK, attribution: '天气服务由和风天气驱动' }), '天气服务由和风天气驱动')
 
 check('旧值必须标出来', staleText({ ...OK, stale: true }).includes('上次'), true)
 check('不是旧值就不加这句', staleText(OK), '')

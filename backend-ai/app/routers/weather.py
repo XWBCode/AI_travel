@@ -18,7 +18,7 @@ from datetime import datetime
 from fastapi import APIRouter, Query, Request
 
 from app.config import settings
-from app.tools.weather import R_PROVIDER_DISABLED, TZ, fetch_forecast
+from app.tools.weather import FORECAST_WINDOW_DAYS, R_PROVIDER_DISABLED, TZ, fetch_forecast
 
 logger = logging.getLogger("ai-travel.weather")
 
@@ -30,7 +30,12 @@ async def get_weather(
     request: Request,
     city: str | None = Query(default=None, description="城市名，可以是「成都」「大理」「云南」"),
     start_date: str | None = Query(default=None, description="出发日期 YYYY-MM-DD，为空表示计划没有日期"),
-    days: int = Query(default=1, ge=1, le=16, description="需要几天，上限等于预报窗口"),
+    days: int = Query(
+        default=1,
+        ge=1,
+        le=FORECAST_WINDOW_DAYS,
+        description="需要几天，上限等于预报窗口（和风天气官方 10 天）",
+    ),
 ):
     trace_id = request.headers.get("X-Trace-Id", "")
     weather_settings = settings.weather
@@ -52,6 +57,7 @@ async def get_weather(
         provider=weather_settings.provider,
         timeout_seconds=weather_settings.timeout_seconds,
         connect_timeout_seconds=weather_settings.connect_timeout_seconds,
+        settings=weather_settings,
         now=datetime.now(TZ),
     )
     result["traceId"] = trace_id

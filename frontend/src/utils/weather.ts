@@ -27,6 +27,9 @@ export const WEATHER_REASON_TEXT: Record<string, string> = {
 
 const FALLBACK_REASON_TEXT = '天气暂不可用'
 
+/** `attribution` 为空时的兜底署名。不写具体 provider，避免换源后变成假话 */
+export const ATTRIBUTION_FALLBACK = '天气数据由第三方服务提供'
+
 /**
  * 降级提示。
  *
@@ -92,16 +95,44 @@ export function toRows(vo?: PlanWeatherVO | null): WeatherRow[] {
 /**
  * 来源与时效。
  *
- * 署名是硬要求（CC BY 4.0），所以 `attribution` 为空时退回一句固定文案而不是不显示；
+ * 署名是硬要求，且两家要求不同：
+ * - 和风天气：必须展示「和风天气 / QWeather」**并带超链 https://www.qweather.com**，
+ *   官方推荐文案就是「天气服务由和风天气驱动」（D-03 §4.6）；不署名可能被停止服务。
+ * - Open-Meteo：CC BY 4.0 要求署名。
+ *
+ * 所以 `attribution` 的文字由后端给（换源时前端不用改），**链接由这里按文字匹配**：
+ * 契约里不加字段，前端也不猜 provider 名（`source` 是枚举，可能新增取值）。
+ *
  * 时间取 `fetchedAt`，只给"多久之前"——绝对时间对判断"这数据还新不新"没有帮助。
  */
+const ATTRIBUTION_LINKS: ReadonlyArray<readonly [RegExp, string]> = [
+  [/和风天气|qweather/i, 'https://www.qweather.com'],
+  [/open-?meteo/i, 'https://open-meteo.com'],
+]
+
+/** 归因文字 → 官方链接。匹配不到返回空串（此时只显示文字，不编一个链接出来） */
+export function attributionUrl(attribution?: string | null): string {
+  const text = (attribution ?? '').trim()
+  if (!text) return ''
+  for (const [pattern, url] of ATTRIBUTION_LINKS) {
+    if (pattern.test(text)) return url
+  }
+  return ''
+}
+
 export function sourceLine(vo?: PlanWeatherVO | null, now: Date = new Date()): string {
   if (!vo?.available) return ''
   const parts: string[] = []
-  parts.push(vo.attribution?.trim() || '数据来源 Open-Meteo（CC BY 4.0）')
+  // 兜底句不写具体 provider：默认值写死某一家，换源之后就成了假话
+  parts.push(attributionText(vo))
   const relative = relativeTime(vo.fetchedAt, now)
   if (relative) parts.push(`更新于${relative}`)
   return parts.join(' · ')
+}
+
+/** 署名文字（可直接作为链接的锚文本）。链接由 `attributionUrl` 单独给 */
+export function attributionText(vo?: PlanWeatherVO | null): string {
+  return vo?.attribution?.trim() || ATTRIBUTION_FALLBACK
 }
 
 /** 相对时间。返回空串表示没有可用时间，调用方直接不显示这一段 */

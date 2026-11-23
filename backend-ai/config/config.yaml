@@ -26,13 +26,32 @@ llm:
 rag:
   enabled: false
 
-# ===== 天气（M3-1）=====
-# provider 默认 none：Open-Meteo 免费端点禁商用且数据需署名（CC BY 4.0）。
-# 只有开发/演示环境显式打开，生产必须等 D-03 定案后换成商用数据源。
-# 打开方式：环境变量 WEATHER_PROVIDER=open-meteo
+# ===== 天气（M3-1 / D-03）=====
+# provider 默认 none：生产用和风天气（D-03），但凭据不在仓库里，所以默认必须是"关"。
+# 没有凭据的默认启用只会让每个部署都 401 一次，还可能触发对方的风控。
+#
+# 打开方式：
+#   WEATHER_PROVIDER=qweather + QWEATHER_API_HOST / QWEATHER_DEVELOPER_ID /
+#   QWEATHER_PROJECT_ID / QWEATHER_KEY_ID / QWEATHER_PRIVATE_KEY_PATH
+# 开发/CI（无凭据）：WEATHER_PROVIDER=open-meteo
+#
+# ⚠️ 私钥不要写进本文件（本文件入库）。用 QWEATHER_PRIVATE_KEY_PATH 指向 .pem 文件，
+#    *.pem / *.key 已在 .gitignore 里。
 weather:
-  provider: none            # none | open-meteo
+  provider: none            # none | qweather | open-meteo
   timeout_seconds: 3.0      # 外部 API 必须设超时，不设等于把可用性交给别人
   connect_timeout_seconds: 2.0
-  cache_ttl_minutes: 30
+  # 官方"逐天预报推荐缓存 1–6 小时"，取 1 小时；另受"次日 00:10 必须失效"硬约束
+  cache_ttl_minutes: 60
+  # 熔断：官方明确写了持续错误请求可能被判定为攻击并冻结账号
+  circuit_failure_threshold: 3
+  circuit_cooldown_seconds: 300
+
+  # ===== 和风天气凭据（留空即视为未配置）=====
+  # API Host 是每个开发者的专属域名，从控制台-设置复制，填错会 403 INVALID HOST
+  qweather_api_host: ""
+  qweather_developer_id: ""   # Q 开头 10 位
+  qweather_project_id: ""
+  qweather_key_id: ""         # 凭据ID
+  qweather_private_key_path: ""   # Ed25519 私钥 PEM 的路径，不要填内容
 

@@ -11,7 +11,9 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -46,8 +48,19 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 public class PlanWeatherService {
 
-    /** 预报窗口上限，与 Python 侧、前端文案三处一致；超出的日期只能等 */
-    private static final int MAX_FORECAST_DAYS = 16;
+    /** 预报窗口上限，与 Python 侧、前端文案三处一致；超出的日期只能等（和风天气官方 10 天） */
+    private static final int MAX_FORECAST_DAYS = 10;
+
+    /** 跨天失效边界：次日 00:10。官方缓存文档点名"跨天不刷新会整体错一天" */
+    private static final LocalTime CROSS_DAY_CUTOFF = LocalTime.of(0, 10);
+
+    /**
+     * 缓存键的自然日按哪个时区算。
+     * <p>
+     * 必须与 Python 侧（固定 +08:00）一致，不能取服务器默认时区：否则一台 UTC 的机器
+     * 会在这里提前/推迟 8 小时换 key，跨天表现和本地开发完全不一样。
+     */
+    private static final ZoneId CN_ZONE = ZoneId.of("Asia/Shanghai");
 
     private final PlanStoreService store;
     private final AiServiceClient aiServiceClient;
@@ -94,8 +107,9 @@ public class PlanWeatherService {
         }
 
         int days = clamp(plan.getDays() == null ? 1 : plan.getDays(), 1, MAX_FORECAST_DAYS);
-        // key 带日期与天数：计划改了日期或天数就自动失效，不需要显式清缓存
-        String key = cacheKey(planId, plan.getStartDate(), days, city);
+        // key 带日期、天数与「请求时的自然日」：计划改了日期或天数自动失效，
+        // 跨过零点也会换 key —— 这样 23:50 缓存的「明天起 3 天」在次日不会再被当成最新
+        String key = cacheKey(planId, plan.getStartDate(), days, city, LocalDate.now(CN_ZONE));
 
         Cached cached = getCached(key);
         if (cached != null && cached.expiresAt().isAfter(Instant.now())) {
@@ -158,7 +172,9 @@ public class PlanWeatherService {
     private PlanWeatherVO toVo(JsonNode root) {
         PlanWeatherVO vo = new PlanWeatherVO();
         vo.setAvailable(true);
-        vo.setSource(text(root, "source", "OPEN_METEO"));
+        // 兜底值写 NONE 而不是某个 provider 名：默认值写死 "OPEN_METEO"，
+        // 换源之后那句默认值就变成一句假话（D-03 实施清单第 8 条）
+        vo.setSource(text(root, "source", "NONE"));
         vo.setAttribution(text(root, "attribution", ""));
         vo.setFetchedAt(text(root, "fetchedAt", null));
         vo.setExpiresAt(text(root, "expiresAt", null));
@@ -222,9 +238,22 @@ public class PlanWeatherService {
         if (expiresAt == null) {
             expiresAt = Instant.now().plusSeconds(properties.getCacheTtlMinutes() * 60L);
         }
+        // 硬边界：不管上游/配置给多久，跨过次日 00:10 就必须失效。
+        // 这一层兜底不信任 Python——版本错配、灰度期间新旧服务混跑都可能让 expiresAt 变长，
+        // 而"错一天的天气"在界面上看不出任何异常。
+        Instant cutoff = nextDayCutoff();
+        if (expiresAt.isAfter(cutoff)) {
+            expiresAt = cutoff;
+        }
         synchronized (cache) {
             cache.put(key, new Cached(vo, expiresAt));
         }
+    }
+
+    /** 下一个"次日 00:10"（东八区）。包级可见是为了让测试直接断言边界，不用等下一天。 */
+    static Instant nextDayCutoff() {
+        LocalDate tomorrow = LocalDate.now(CN_ZONE).plusDays(1);
+        return tomorrow.atTime(CROSS_DAY_CUTOFF).atZone(CN_ZONE).toInstant();
     }
 
     /** 优先用 Python 给的 expiresAt（TTL 只有一个来源），解析不了才退回本地配置 */
@@ -256,16 +285,22 @@ public class PlanWeatherService {
     /** 仅用于测试：直接注入一条过期缓存，构造"过期 + 上游挂掉"的场景 */
     void seedExpired(PlanWeatherVO vo, Long planId, LocalDate startDate, int days, String city) {
         synchronized (cache) {
-            cache.put(cacheKey(planId, startDate, days, city), new Cached(vo, Instant.now().minusSeconds(60)));
+            cache.put(
+                    cacheKey(planId, startDate, days, city, LocalDate.now(CN_ZONE)),
+                    new Cached(vo, Instant.now().minusSeconds(60)));
         }
     }
 
     /**
-     * 缓存键。日期与天数进 key 是刻意的：计划一改日期，旧值自动不再被命中，
-     * 不需要在写路径上到处记得清缓存（漏清一次就是给用户看错天气）。
+     * 缓存键。日期、天数、**请求时的自然日**都进 key，是刻意的：
+     * <ul>
+     *   <li>计划一改日期，旧值自动不再被命中，不需要在写路径上到处记得清缓存；</li>
+     *   <li>跨过零点换 key，这样「23:50 缓存的明天起 3 天」在次日不会被当成最新
+     *       （和风天气官方缓存文档点名的坑：整体错一天）。</li>
+     * </ul>
      */
-    static String cacheKey(Long planId, LocalDate startDate, int days, String city) {
-        return planId + "|" + startDate + "|" + days + "|" + city;
+    static String cacheKey(Long planId, LocalDate startDate, int days, String city, LocalDate requestDate) {
+        return planId + "|" + startDate + "|" + days + "|" + city + "|" + requestDate;
     }
 
     /** 供控制器/测试复用的降级原因清单，防止前后端文案对不上 */

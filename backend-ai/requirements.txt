@@ -3,3 +3,6 @@ uvicorn[standard]==0.32.1
 httpx==0.28.1
 pyyaml==6.0.2
 pydantic==2.10.4
+# 和风天气 JWT（EdDSA/Ed25519）签名，D-03 决定用 JWT 而非 API KEY
+PyJWT==2.10.1
+cryptography==44.0.0

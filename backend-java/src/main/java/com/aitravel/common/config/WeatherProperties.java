@@ -5,19 +5,21 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * app.weather.* 配置：天气展示（M3-1）。
+ * app.weather.* 配置：天气展示（M3-1 / D-03）。
  *
  * <p>{@code provider} 默认 {@code none}，这不是「还没配」而是刻意的默认值：
- * Open-Meteo 免费端点明确禁止商业使用、数据以 CC BY 4.0 发布（须署名），
- * 生产环境不能因为「默认开着」就悄悄踩线。要打开必须在环境里显式写
- * {@code WEATHER_PROVIDER=open-meteo}，并且只用于开发/演示环境。
+ * D-03 定案后生产用和风天气（QWeather），但凭据不在仓库里。默认开着的后果是
+ * 每个部署都先吃一次 401，还可能触发对方的风控（官方明确写了持续错误请求可能冻结帐号）。
+ * 要打开必须在环境里显式写 {@code WEATHER_PROVIDER=qweather} 并配齐凭据。
+ *
+ * <p>{@code open-meteo} 仍然可用，但只用于开发/CI：其免费端点禁商用、数据以 CC BY 4.0 发布（须署名）。
  */
 @Data
 @Configuration
 @ConfigurationProperties(prefix = "app.weather")
 public class WeatherProperties {
 
-    /** none | open-meteo */
+    /** none | qweather | open-meteo */
     private String provider = "none";
 
     /**
@@ -29,8 +31,13 @@ public class WeatherProperties {
      */
     private int timeoutMs = 5000;
 
-    /** 缓存时长。03 文档 §6：城市天气预报 30–60 分钟，取下界 */
-    private int cacheTtlMinutes = 30;
+    /**
+     * 缓存时长（分钟）。D-03 从 30 改成 60：和风天气官方「逐天预报推荐缓存 1–6 小时」。
+     * <p>
+     * 这只是主 TTL，另有硬边界「次日 00:10 必须失效」在 {@code PlanWeatherService} 里兜底——
+     * 官方缓存文档点名了跨天不刷新会「整体错一天」的坑。
+     */
+    private int cacheTtlMinutes = 60;
 
     /** 缓存条数上限，防止长期运行内存无限增长（进程内缓存，单机状态） */
     private int cacheMaxEntries = 1000;

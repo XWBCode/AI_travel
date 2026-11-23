@@ -18,6 +18,7 @@ import java.time.LocalDate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -252,7 +253,9 @@ class PlanWeatherServiceTest {
 
         service.weather(PLAN_ID, USER_ID, "t-1");
 
-        verify(aiServiceClient).fetchWeather("成都", "2026-11-24", 16, "t-1");
+        // D-03 之后上限是 10（和风天气官方窗口），不再是 Open-Meteo 的 16。
+        // 这个数字必须与 Python 侧 FORECAST_WINDOW_DAYS、前端文案三处一致。
+        verify(aiServiceClient).fetchWeather("成都", "2026-11-24", 10, "t-1");
     }
 
     @Test
@@ -263,5 +266,44 @@ class PlanWeatherServiceTest {
 
         assertThrows(BizException.class, () -> service.weather(PLAN_ID, 999L, "t-1"));
         verify(aiServiceClient, never()).fetchWeather(any(), any(), anyInt(), any());
+    }
+
+    @Test
+    @DisplayName("缓存 key 含请求自然日：跨过零点必须换 key，否则次日仍读「明天起 3 天」")
+    void weather_cacheKeyIncludesRequestDate() {
+        LocalDate day1 = LocalDate.of(2026, 11, 23);
+        LocalDate day2 = LocalDate.of(2026, 11, 24);
+
+        String k1 = PlanWeatherService.cacheKey(PLAN_ID, START, 3, "成都", day1);
+        String k2 = PlanWeatherService.cacheKey(PLAN_ID, START, 3, "成都", day2);
+
+        assertNotEquals(k1, k2, "同一计划跨天后必须变成另一个 key，否则会整体错一天的天气");
+        // 同一自然日、其余条件相同 → 必须命中同一条缓存，不能每次刷新都打上游
+        assertEquals(k1, PlanWeatherService.cacheKey(PLAN_ID, START, 3, "成都", day1));
+    }
+
+    @Test
+    @DisplayName("跨天失效边界是「次日 00:10」（东八区），不是服务器的本地零点")
+    void weather_nextDayCutoffUsesChinaZone() {
+        java.time.ZonedDateTime cutoff = PlanWeatherService.nextDayCutoff().atZone(java.time.ZoneId.of("Asia/Shanghai"));
+
+        assertEquals(java.time.LocalTime.of(0, 10), cutoff.toLocalTime());
+        assertEquals(LocalDate.now(java.time.ZoneId.of("Asia/Shanghai")).plusDays(1), cutoff.toLocalDate());
+    }
+
+    @Test
+    @DisplayName("上游没给 source 时兜底 NONE，不再写死某个 provider 名")
+    void weather_sourceFallsBackToNone() throws Exception {
+        // D-03 实施清单第 8 条：默认值写死 "OPEN_METEO"，换源之后那句默认值就变成假话
+        JsonNode noSource = MAPPER.readTree("""
+                {"ok": true, "attribution": "", "fetchedAt": "2026-11-23T22:40:00+08:00", "days": []}
+                """);
+        when(store.loadOwned(PLAN_ID, USER_ID)).thenReturn(plan(START, "成都", 3));
+        when(aiServiceClient.fetchWeather(anyString(), anyString(), anyInt(), any()))
+                .thenReturn(noSource);
+
+        PlanWeatherVO vo = service.weather(PLAN_ID, USER_ID, "t-1");
+
+        assertEquals("NONE", vo.getSource());
     }
 }

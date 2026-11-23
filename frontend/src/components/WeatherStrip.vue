@@ -2,10 +2,12 @@
 import { computed } from 'vue'
 import type { PlanWeatherVO } from '@/api/types'
 import {
+  attributionText,
+  attributionUrl,
   canFixByUser,
   cityNote,
   reasonText,
-  sourceLine,
+  relativeTime,
   staleText,
   toRows,
 } from '@/utils/weather'
@@ -35,7 +37,13 @@ const degradeText = computed(() =>
   reasonText(props.weather?.reason, props.weather?.message),
 )
 const showAnchorButton = computed(() => props.canAnchor && canFixByUser(props.weather?.reason))
-const source = computed(() => sourceLine(props.weather))
+const attribution = computed(() => attributionText(props.weather))
+/**
+ * 归因链接。和风天气的条款要求「和风天气 / QWeather + 超链 https://www.qweather.com」，
+ * 只写文字不挂链属于不合规——所以链接不是"锦上添花"，是许可条件的一部分。
+ */
+const attributionHref = computed(() => attributionUrl(props.weather?.attribution))
+const updated = computed(() => relativeTime(props.weather?.fetchedAt))
 const stale = computed(() => staleText(props.weather))
 const note = computed(() => cityNote(props.weather))
 </script>
@@ -68,7 +76,17 @@ const note = computed(() => cityNote(props.weather))
         </li>
       </ul>
       <div class="weather-foot">
-        <span class="weather-source">{{ source }}</span>
+        <span class="weather-source">
+          <a
+            v-if="attributionHref"
+            :href="attributionHref"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="source-link"
+          >{{ attribution }}</a>
+          <template v-else>{{ attribution }}</template>
+          <template v-if="updated"> · 更新于{{ updated }}</template>
+        </span>
         <span v-if="stale" class="weather-stale">{{ stale }}</span>
         <span v-if="note" class="weather-note">{{ note }}</span>
       </div>
@@ -168,6 +186,17 @@ const note = computed(() => cityNote(props.weather))
 
 .weather-stale {
   color: #a9761b;
+}
+
+/* 归因链接不能做成"正文里的蓝字"：官方要求独立、可见、不与正文混淆 */
+.source-link {
+  color: var(--at-text-secondary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.source-link:hover {
+  color: var(--at-primary);
 }
 
 .weather-note {

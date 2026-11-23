@@ -1,17 +1,29 @@
-"""天气工具层：城市解析 + Open-Meteo 调用 + 归一化成 FactField。
+"""天气编排层：城市解析 + 窗口裁剪 + provider 调度 + 归一化成 FactField。
 
-三条硬约束（来自 `03-外部数据源选型与降级规范.md` §4，以及 M3-1 的 PM 批注）：
+> 数据源已经与这里解耦：具体"和风天气 / Open-Meteo"的 HTTP、JSON 结构、单位、
+> 中文映射都在 `app/tools/weather_providers/` 里。本文件不认识任何上游字段名，
+> 只认识 `NormalizedDay`。换源时这里**一行都不用改**。
+
+## 三条硬约束（来自 `03-外部数据源选型与降级规范.md` §4，以及 M3-1 的 PM 批注）
 
 1. **不造数**。只有真的拿到上游某一天的数据，才把该字段置 `verified=true` / `source=TOOL`。
    缺失就置 `verified=false` / `source=NONE` / `value=null`——契约里这条是强约束
-   （`factFieldBase` 的 `allOf` 分支），不是风格问题。
+   （`factFieldBase` 的 `allOf` 分支），不是风格问题。**绝不填 0 顶替**：
+   填 0 会让"降水概率 0%"和"没拿到降水概率"长得一模一样。
 2. **可预期失败不抛异常**。统一 `{"ok": False, "reason": ...}` 返回，由 Java 决定降级文案。
    只有参数本身非法（比如 days 不是正整数）才让路由层返回 422。
-3. **不越窗口**。超出 Open-Meteo 预报范围就如实降级，绝不用"历史同期平均"顶上——
+3. **不越窗口**。超出预报范围就如实降级，绝不用"历史同期平均"顶上——
    那是看起来最像真数据的假信息。
 
-> 单位约定：上游 `temperature_2m_*` 为 ℃、`precipitation_probability_max` 为 %、
-> `wind_speed_10m_max` 默认 km/h。`display` 里带单位，`value` 只放裸数字，两者口径见各字段注释。
+## 预报窗口（D-03 后统一为 10 天）
+
+和风天气官方上限是 10 天，Open-Meteo 免费端点约 16 天。**统一取 10**：
+前后端口径只有一个数字，比"每个源各自一个上限"少一整类"前端说能看、后端说超范围"的错。
+
+## 缓存过期时间
+
+`min(now + 60min, 次日 00:10)`。第二个边界不是洁癖——和风天气官方缓存文档点名了这个坑：
+23:00 缓存了"明天起 3 天"，次日 00:10 之后如果不失效，用户看到的仍然是"明天"，**整体错一天**。
 """
 
 from __future__ import annotations
@@ -19,85 +31,46 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 import httpx
 
+from app.tools import weather_circuit
+from app.tools.weather_providers import PROVIDER_NONE, get_provider
+from app.tools.weather_providers.base import NormalizedDay, ProviderFailure, ProviderResult
+from app.tools.weather_reasons import (  # noqa: F401  —— R_* 由本模块再导出，历史引用点不动
+    ALL_REASONS,
+    MESSAGES,
+    R_CITY_UNKNOWN,
+    R_DATE_OUT_OF_RANGE,
+    R_NO_CITY,
+    R_NO_START_DATE,
+    R_PROVIDER_DISABLED,
+    R_UPSTREAM_ERROR,
+    R_UPSTREAM_TIMEOUT,
+    fail as _fail,
+)
+
 logger = logging.getLogger("ai-travel.weather")
 
 # 中国无夏令时，固定 +08:00 与 Asia/Shanghai 完全等价；
 # 不用 ZoneInfo 是因为 Windows 不带 IANA 时区库（会抛 ZoneInfoNotFoundError），
-# 为一个时区引入 tzdata 依赖不划算。上游请求参数仍显式传 `timezone=Asia/Shanghai`，
-# 让 Open-Meteo 按当地日历切天。
+# 为一个时区引入 tzdata 依赖不划算。
 TZ = timezone(timedelta(hours=8), "Asia/Shanghai")
 TZ_NAME = "Asia/Shanghai"
 COORDS_FILE = Path(__file__).with_name("city_coords.json")
 
-UPSTREAM_URL = "https://api.open-meteo.com/v1/forecast"
-SOURCE_OPEN_METEO = "OPEN_METEO"
 SOURCE_NONE = "NONE"
-# CC BY 4.0 要求署名，前端必须逐字展示这一串
-ATTRIBUTION = "Weather data by Open-Meteo.com (CC BY 4.0)"
 
-# 免费预报端点约 16 天（含今天）。这个数字变了要同步改 03 文档与前端文案
-FORECAST_WINDOW_DAYS = 16
-# 03 文档 §6：城市天气预报缓存 30–60 分钟，取下界
-CACHE_TTL_MINUTES = 30
-
-# 降级原因。与设计稿 §4.1 的 reason 枚举逐字对应，前端按枚举映射文案
-R_NO_START_DATE = "NO_START_DATE"
-R_CITY_UNKNOWN = "CITY_UNKNOWN"
-R_DATE_OUT_OF_RANGE = "DATE_OUT_OF_RANGE"
-R_UPSTREAM_TIMEOUT = "UPSTREAM_TIMEOUT"
-R_UPSTREAM_ERROR = "UPSTREAM_ERROR"
-R_PROVIDER_DISABLED = "PROVIDER_DISABLED"
-R_NO_CITY = "NO_CITY"
-
-_MESSAGES = {
-    R_NO_START_DATE: "补充出发日期后可查看天气",
-    R_CITY_UNKNOWN: "该地点暂无天气数据",
-    R_DATE_OUT_OF_RANGE: "出发日期超出预报范围，临近再看",
-    R_UPSTREAM_TIMEOUT: "天气服务响应超时",
-    R_UPSTREAM_ERROR: "天气服务暂时不可用",
-    R_PROVIDER_DISABLED: "天气功能未开启",
-    R_NO_CITY: "计划里还没有城市，无法查询天气",
-}
-
-# WMO 4677 天气码 → 中文。覆盖 Open-Meteo forecast 会返回的全部取值，
-# 未收录的码一律降级成"未知"，不猜
-_WMO_TEXT = {
-    0: "晴",
-    1: "晴间多云",
-    2: "多云",
-    3: "阴",
-    45: "雾",
-    48: "雾凇",
-    51: "小毛毛雨",
-    53: "毛毛雨",
-    55: "大毛毛雨",
-    56: "冻毛毛雨",
-    57: "强冻毛毛雨",
-    61: "小雨",
-    63: "中雨",
-    65: "大雨",
-    66: "冻雨",
-    67: "强冻雨",
-    71: "小雪",
-    73: "中雪",
-    75: "大雪",
-    77: "雪粒",
-    80: "阵雨",
-    81: "强阵雨",
-    82: "暴雨",
-    85: "阵雪",
-    86: "强阵雪",
-    95: "雷阵雨",
-    96: "雷阵雨伴冰雹",
-    99: "强雷阵雨伴冰雹",
-}
+# 统一预报窗口：和风天气上限 10 天。这个数字变了要同步改 04 契约示例、Java、前端文案
+FORECAST_WINDOW_DAYS = 10
+# 官方"逐天预报推荐缓存 1–6 小时"，取 1 小时；另受"次日 00:10"硬边界约束（见模块文档）
+CACHE_TTL_MINUTES = 60
+# 跨天失效的零点偏移：留 10 分钟给上游更新 00:00 那一班数据
+CROSS_DAY_CUTOFF = time(0, 10)
 
 # 城市名后缀。按长度倒序匹配，先剥长的（"自治州"不能被"州"吃掉）
 _CITY_SUFFIXES = (
@@ -197,7 +170,12 @@ def _lookup(name: str) -> str | None:
 
 
 def resolve_city(raw: str | None) -> CityCoord | None:
-    """把计划里的城市名解析成坐标。解析不出来返回 None（调用方降级为 CITY_UNKNOWN）。"""
+    """把计划里的城市名解析成坐标。解析不出来返回 None（调用方降级为 CITY_UNKNOWN）。
+
+    自带坐标表而不是调 GeoAPI，除了网络可达性，还有个合规理由：和风天气官方
+    「缓存你的数据」页明确写了 GeoAPI 数据**禁止缓存/批量存储/建索引**（版权方要求）。
+    我们只存坐标、不存地理名称数据，恰好不踩这条线。
+    """
     if not raw:
         return None
     name = str(raw).strip()
@@ -253,23 +231,6 @@ def _split_city(name: str) -> list[str]:
 # ---------------------------------------------------------------- 归一化
 
 
-def weather_text(code: Any) -> str:
-    try:
-        return _WMO_TEXT.get(int(code), "未知")
-    except (TypeError, ValueError):
-        return "未知"
-
-
-def wind_level(kmh: float) -> int:
-    """km/h → 蒲福风级。比直接报 km/h 更符合国内用户对"几级风"的直觉。"""
-    ms = kmh / 3.6
-    level = 0
-    for lower in (0.3, 1.6, 3.4, 5.5, 8.0, 10.8, 13.9, 17.2, 20.8, 24.5, 28.5, 32.7):
-        if ms >= lower:
-            level += 1
-    return level
-
-
 def _number_field(
     value: float | None,
     display: str,
@@ -304,79 +265,68 @@ def _number_field(
     }
 
 
-def _pick(daily: dict[str, Any], key: str, i: int) -> float | None:
-    series = daily.get(key)
-    if not isinstance(series, list) or i >= len(series):
-        return None
-    raw = series[i]
-    if raw is None:
-        return None
-    try:
-        return float(raw)
-    except (TypeError, ValueError):
-        return None
-
-
 def build_day(
-    day: date,
+    day: NormalizedDay,
     day_index: int,
     coord: CityCoord,
-    daily: dict[str, Any],
-    i: int,
     fetched_at: str,
     expires_at: str,
+    source: str,
 ) -> dict[str, Any]:
-    t_max = _pick(daily, "temperature_2m_max", i)
-    t_min = _pick(daily, "temperature_2m_min", i)
-    t_mean = _pick(daily, "temperature_2m_mean", i)
-    rain = _pick(daily, "precipitation_probability_max", i)
-    wind = _pick(daily, "wind_speed_10m_max", i)
-    code = _pick(daily, "weather_code", i)
-
-    if t_max is not None and t_min is not None:
-        temp_display = f"{round(t_min):d}–{round(t_max):d}℃"
-        # value 取日均温：单个数字用于排序/比较，区间放 display，两者语义不同但都来自上游
-        temp_value = round(t_mean if t_mean is not None else (t_max + t_min) / 2, 1)
+    """`NormalizedDay` → 契约里的一天。**这是唯一的 FactField 拼装点**，两个 provider 共用。"""
+    if day.temp_max is not None and day.temp_min is not None:
+        temp_display = f"{round(day.temp_min):d}–{round(day.temp_max):d}℃"
+        # value 取日均温：单个数字用于排序/比较，区间放 display，
+        # 两者语义不同但都来自上游（有 Avg 就用 Avg，没有才用最高最低的平均）
+        temp_mean = day.temp_mean
+        if temp_mean is None:
+            temp_mean = (day.temp_max + day.temp_min) / 2
+        temp_value = round(temp_mean, 1)
     else:
+        # 缺一侧就整组降级：只显示"最高 20℃"会让人以为是全天气温
         temp_display = "暂无数据"
         temp_value = None
 
-    if rain is not None:
-        rain_display = f"降水概率 {round(rain):d}%"
-    else:
-        rain_display = "暂无数据"
+    rain_display = f"降水概率 {round(day.precip_prob):d}%" if day.precip_prob is not None else "暂无数据"
 
-    if wind is not None:
-        wind_display = f"{wind_level(wind)}级风"
+    if day.wind_scale is not None:
+        wind_display = f"{day.wind_scale}级风"
+    elif day.wind_speed_ms is not None:
+        # 没有风级才退回风速，绝不自己再算一遍蒲福级（两套口径会打架）
+        wind_display = f"{day.wind_speed_ms:.0f}m/s"
     else:
         wind_display = "暂无数据"
 
     note = coord.note if coord.is_alias else ""
+    has_text = bool(day.weather_text)
     return {
         "dayIndex": day_index,
-        "date": day.isoformat(),
+        "date": day.date.isoformat(),
         "city": coord.input,
         "resolvedCity": coord.city,
         "weather": {
-            "value": weather_text(code),
-            "display": weather_text(code),
-            "source": "TOOL" if code is not None else SOURCE_NONE,
-            "verified": code is not None,
-            "fetchedAt": fetched_at if code is not None else None,
-            "expiresAt": expires_at if code is not None else None,
+            "value": day.weather_text if has_text else None,
+            "display": day.weather_text if has_text else "暂无数据",
+            "source": "TOOL" if has_text else SOURCE_NONE,
+            "verified": has_text,
+            "fetchedAt": fetched_at if has_text else None,
+            "expiresAt": expires_at if has_text else None,
             "note": note,
         },
         "temperature": _number_field(temp_value, temp_display, fetched_at, expires_at, note),
-        "precipitation": _number_field(rain, rain_display, fetched_at, expires_at, note),
-        "wind": _number_field(wind, wind_display, fetched_at, expires_at, note),
+        "precipitation": _number_field(day.precip_prob, rain_display, fetched_at, expires_at, note),
+        # wind.value 用风级（整数），与 display 的"几级风"同一口径；没有风级才用 m/s
+        "wind": _number_field(
+            day.wind_scale if day.wind_scale is not None else day.wind_speed_ms,
+            wind_display,
+            fetched_at,
+            expires_at,
+            note,
+        ),
     }
 
 
-# ---------------------------------------------------------------- 上游调用
-
-
-def _fail(reason: str, message: str | None = None) -> dict[str, Any]:
-    return {"ok": False, "reason": reason, "message": message or _MESSAGES.get(reason, "天气暂不可用")}
+# ---------------------------------------------------------------- 时间与窗口
 
 
 def _iso(dt: datetime) -> str:
@@ -384,9 +334,25 @@ def _iso(dt: datetime) -> str:
 
 
 def forecast_window(now: datetime) -> tuple[date, date]:
-    """可查询窗口：[今天, 今天+15]。超出就降级，不做气候平均替代。"""
+    """可查询窗口：[今天, 今天+9]。超出就降级，不做气候平均替代。"""
     today = now.astimezone(TZ).date()
     return today, today + timedelta(days=FORECAST_WINDOW_DAYS - 1)
+
+
+def expiry_of(now: datetime, ttl_minutes: int = CACHE_TTL_MINUTES) -> datetime:
+    """缓存到期时间 = min(now + ttl, 次日 00:10)。
+
+    第二个边界是为了「跨天」：官方缓存文档点名 23:00 缓存"明天起 3 天"、
+    次日不刷新会整体错一天的坑。把到期时间钉在次日 00:10 之后，key 又会随自然日变化，
+    两层都堵住。
+    """
+    local_now = now.astimezone(TZ)
+    by_ttl = local_now + timedelta(minutes=ttl_minutes)
+    next_midnight = datetime.combine(local_now.date() + timedelta(days=1), CROSS_DAY_CUTOFF, tzinfo=TZ)
+    return min(by_ttl, next_midnight)
+
+
+# ---------------------------------------------------------------- 上游调用
 
 
 async def fetch_forecast(
@@ -394,11 +360,14 @@ async def fetch_forecast(
     start_date: str | date | None,
     days: int,
     *,
-    provider: str = "open-meteo",
+    provider: str = PROVIDER_NONE,
     timeout_seconds: float = 3.0,
     connect_timeout_seconds: float = 2.0,
     client: httpx.AsyncClient | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
+    settings: Any = None,
+    clock: Any = None,
+    token_provider: Any = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     """查询逐日天气。返回 `{"ok": True, ...}` 或 `{"ok": False, "reason": ..., "message": ...}`。
@@ -407,9 +376,11 @@ async def fetch_forecast(
     - `city` 计划里的城市（可空，空则 `NO_CITY`）
     - `start_date` 出发日期（ISO 字符串或 date；空则 `NO_START_DATE`，本层也判一次，
       避免 Java 漏判时拿着 today 去查——那就是 B 方案，已被否掉）
-    - `days` 需要几天（1..16）
+    - `days` 需要几天（1..10）
+    - `settings` 传给 provider 的配置对象（和风天气要用它取 host/凭据）
     """
-    if provider in ("", "none", None):
+    module = get_provider(provider)
+    if module is None:
         return _fail(R_PROVIDER_DISABLED)
     if not city:
         return _fail(R_NO_CITY)
@@ -438,87 +409,87 @@ async def fetch_forecast(
             return _fail(R_DATE_OUT_OF_RANGE, "行程日期已过去")
         return _fail(R_DATE_OUT_OF_RANGE)
 
-    params = {
-        "latitude": coord.lat,
-        "longitude": coord.lon,
-        "timezone": TZ_NAME,
-        "start_date": want_start.isoformat(),
-        "end_date": want_end.isoformat(),
-        "daily": ",".join(
-            (
-                "weather_code",
-                "temperature_2m_max",
-                "temperature_2m_min",
-                "temperature_2m_mean",
-                "precipitation_probability_max",
-                "wind_speed_10m_max",
-            )
-        ),
-    }
+    breaker = weather_circuit.breaker_for(
+        provider,
+        failure_threshold=int(getattr(settings, "circuit_failure_threshold", 3) or 3),
+        cooldown_seconds=float(getattr(settings, "circuit_cooldown_seconds", 300.0) or 300.0),
+    )
+    now_ts = now.timestamp()
+    if not breaker.allow(now_ts):
+        # 熔断期间不发请求：官方明确写了持续错误请求可能冻结账号
+        logger.warning("天气熔断中 provider=%s city=%s", provider, coord.city)
+        return _fail(R_UPSTREAM_ERROR, "天气服务暂时不可用")
 
-    owns_client = client is None
-    if client is None:
-        client = httpx.AsyncClient(
-            timeout=httpx.Timeout(timeout_seconds, connect=connect_timeout_seconds),
-            transport=transport,
-        )
     try:
-        resp = await client.get(UPSTREAM_URL, params=params)
-        resp.raise_for_status()
-        payload = resp.json()
-    except httpx.TimeoutException:
-        logger.warning("weather upstream timeout city=%s start=%s", coord.city, want_start)
-        return _fail(R_UPSTREAM_TIMEOUT)
-    except httpx.HTTPStatusError as e:
-        logger.warning("weather upstream status=%s city=%s", e.response.status_code, coord.city)
+        result = await module.fetch(
+            lat=coord.lat,
+            lon=coord.lon,
+            start=want_start,
+            end=want_end,
+            timeout_seconds=timeout_seconds,
+            connect_timeout_seconds=connect_timeout_seconds,
+            client=client,
+            transport=transport,
+            settings=settings,
+            now=now,
+            clock=clock,
+            token_provider=token_provider,
+        )
+    except ProviderFailure as e:
+        breaker.record_failure(now_ts, hard=e.hard)
+        logger.warning(
+            "天气上游失败 provider=%s city=%s reason=%s hard=%s", provider, coord.city, e.reason, e.hard
+        )
+        return _fail(e.reason, e.message)
+    except Exception:  # noqa: BLE001 —— 上游/解析的任何意外都不能穿透到路由层
+        breaker.record_failure(now_ts)
+        logger.exception("天气上游未预期异常 provider=%s city=%s", provider, coord.city)
         return _fail(R_UPSTREAM_ERROR)
-    except (httpx.HTTPError, ValueError) as e:
-        logger.warning("weather upstream error city=%s err=%s", coord.city, type(e).__name__)
-        return _fail(R_UPSTREAM_ERROR)
-    finally:
-        if owns_client:
-            await client.aclose()
+    breaker.record_success()
 
-    daily = (payload or {}).get("daily") or {}
-    times = daily.get("time") or []
-    if not times:
-        # 上游 200 但结构变了/没数据：这是"上游异常"，不是"没有天气"
-        logger.warning("weather upstream empty daily city=%s keys=%s", coord.city, list(daily))
-        return _fail(R_UPSTREAM_ERROR, "天气数据格式异常")
+    return _assemble(result, coord, start, end, want_start, want_end, now, settings)
 
+
+def _assemble(
+    result: ProviderResult,
+    coord: CityCoord,
+    start: date,
+    end: date,
+    want_start: date,
+    want_end: date,
+    now: datetime,
+    settings: Any,
+) -> dict[str, Any]:
+    ttl_minutes = int(getattr(settings, "cache_ttl_minutes", CACHE_TTL_MINUTES) or CACHE_TTL_MINUTES)
     fetched_at = _iso(now)
-    expires_at = _iso(now + timedelta(minutes=CACHE_TTL_MINUTES))
+    expires_at = _iso(expiry_of(now, ttl_minutes))
 
     out_days: list[dict[str, Any]] = []
-    for i, raw_day in enumerate(times):
-        try:
-            day_date = date.fromisoformat(str(raw_day))
-        except ValueError:
-            continue
-        if not (want_start <= day_date <= want_end):
+    for day in result.days:
+        if not (want_start <= day.date <= want_end):
             continue
         # dayIndex 相对整段行程的第 1 天，而不是相对本次返回的第 1 天
-        day_index = (day_date - start).days + 1
-        out_days.append(build_day(day_date, day_index, coord, daily, i, fetched_at, expires_at))
+        day_index = (day.date - start).days + 1
+        out_days.append(build_day(day, day_index, coord, fetched_at, expires_at, result.source))
 
     if not out_days:
         return _fail(R_UPSTREAM_ERROR, "天气数据为空")
 
-    note = None
+    # note 只说"哪一段没给"，且不写数字（note 走 freeText，禁止"数字+单位"）
+    note_parts: list[str] = []
     if want_start != start:
-        note = "行程中已过去的日期不提供天气"
+        note_parts.append("行程中已过去的日期不提供天气")
     if want_end != end:
-        note = (note + "；" if note else "") + "超出预报范围的日期不提供天气"
-
+        note_parts.append("超出预报范围的日期不提供天气")
     return {
         "ok": True,
-        "source": SOURCE_OPEN_METEO,
-        "attribution": ATTRIBUTION,
+        "source": result.source,
+        "attribution": result.attribution,
         "city": coord.input,
         "resolvedCity": coord.city,
         "fetchedAt": fetched_at,
         "expiresAt": expires_at,
-        "ttlMinutes": CACHE_TTL_MINUTES,
-        "note": note,
+        "ttlMinutes": ttl_minutes,
+        "note": "；".join(note_parts) if note_parts else None,
         "days": out_days,
     }
