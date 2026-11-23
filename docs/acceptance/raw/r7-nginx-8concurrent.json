@@ -1,0 +1,1402 @@
+{
+  "label": "nginx-8concurrent",
+  "base": "http://127.0.0.1:8088/api",
+  "concurrency": 8,
+  "at": "2026-11-23 22:49:04",
+  "summary": [
+    {
+      "label": "nginx-8concurrent-1",
+      "ok": true,
+      "http_status": 200,
+      "first_byte_ms": 48,
+      "total_ms": 98381,
+      "pings": 6,
+      "max_gap_ms": 15007,
+      "events": [
+        "meta",
+        "intent",
+        "plan_progress",
+        "plan_draft",
+        "plan_saved",
+        "delta",
+        "done"
+      ],
+      "plan_id": "2124877624239185921",
+      "error": null
+    },
+    {
+      "label": "nginx-8concurrent-2",
+      "ok": true,
+      "http_status": 200,
+      "first_byte_ms": 47,
+      "total_ms": 119008,
+      "pings": 7,
+      "max_gap_ms": 15007,
+      "events": [
+        "meta",
+        "intent",
+        "plan_progress",
+        "plan_draft",
+        "plan_saved",
+        "delta",
+        "done"
+      ],
+      "plan_id": "2124877710780260353",
+      "error": null
+    },
+    {
+      "label": "nginx-8concurrent-3",
+      "ok": true,
+      "http_status": 200,
+      "first_byte_ms": 48,
+      "total_ms": 139094,
+      "pings": 9,
+      "max_gap_ms": 15008,
+      "events": [
+        "meta",
+        "intent",
+        "plan_progress",
+        "plan_draft",
+        "plan_saved",
+        "delta",
+        "done"
+      ],
+      "plan_id": "2124877795115130882",
+      "error": null
+    },
+    {
+      "label": "nginx-8concurrent-4",
+      "ok": true,
+      "http_status": 200,
+      "first_byte_ms": 51,
+      "total_ms": 120188,
+      "pings": 8,
+      "max_gap_ms": 15006,
+      "events": [
+        "meta",
+        "intent",
+        "plan_progress",
+        "plan_draft",
+        "plan_saved",
+        "delta",
+        "done"
+      ],
+      "plan_id": "2124877715737927681",
+      "error": null
+    },
+    {
+      "label": "nginx-8concurrent-5",
+      "ok": true,
+      "http_status": 200,
+      "first_byte_ms": 48,
+      "total_ms": 102598,
+      "pings": 6,
+      "max_gap_ms": 15006,
+      "events": [
+        "meta",
+        "intent",
+        "plan_progress",
+        "plan_draft",
+        "plan_saved",
+        "delta",
+        "done"
+      ],
+      "plan_id": "2124877642006257666",
+      "error": null
+    },
+    {
+      "label": "nginx-8concurrent-6",
+      "ok": true,
+      "http_status": 200,
+      "first_byte_ms": 50,
+      "total_ms": 103140,
+      "pings": 6,
+      "max_gap_ms": 15004,
+      "events": [
+        "meta",
+        "intent",
+        "plan_progress",
+        "plan_draft",
+        "plan_saved",
+        "delta",
+        "done"
+      ],
+      "plan_id": "2124877644283764737",
+      "error": null
+    },
+    {
+      "label": "nginx-8concurrent-7",
+      "ok": true,
+      "http_status": 200,
+      "first_byte_ms": 50,
+      "total_ms": 164197,
+      "pings": 10,
+      "max_gap_ms": 15005,
+      "events": [
+        "meta",
+        "intent",
+        "plan_progress",
+        "plan_draft",
+        "plan_saved",
+        "delta",
+        "done"
+      ],
+      "plan_id": "2124877900400549890",
+      "error": null
+    },
+    {
+      "label": "nginx-8concurrent-8",
+      "ok": true,
+      "http_status": 200,
+      "first_byte_ms": 50,
+      "total_ms": 125796,
+      "pings": 8,
+      "max_gap_ms": 15004,
+      "events": [
+        "meta",
+        "intent",
+        "plan_progress",
+        "plan_draft",
+        "plan_saved",
+        "delta",
+        "done"
+      ],
+      "plan_id": "2124877739301527554",
+      "error": null
+    }
+  ],
+  "runs": [
+    {
+      "base": "http://127.0.0.1:8088/api",
+      "content": "帮我规划成都三天，两个人，预算五千，喜欢美食和历史文化",
+      "status": 200,
+      "error": null,
+      "first_byte_ms": 48,
+      "total_ms": 98381,
+      "pings": 6,
+      "events": [
+        "meta",
+        "intent",
+        "plan_progress",
+        "plan_draft",
+        "plan_saved",
+        "delta",
+        "done"
+      ],
+      "max_gap_ms": 15007,
+      "gaps": [
+        48,
+        6,
+        0,
+        15007,
+        14997,
+        15003,
+        14991,
+        14997,
+        15005,
+        8302,
+        0,
+        0,
+        18
+      ],
+      "plan_id": "2124877624239185921",
+      "timeline": [
+        {
+          "ms": 48,
+          "kind": "event",
+          "text": "meta"
+        },
+        {
+          "ms": 48,
+          "kind": "data",
+          "event": "meta",
+          "text": "{\"sessionId\":\"2124877212002017283\",\"userMessageId\":\"2124877212002017289\"}"
+        },
+        {
+          "ms": 54,
+          "kind": "event",
+          "text": "intent"
+        },
+        {
+          "ms": 54,
+          "kind": "data",
+          "event": "intent",
+          "text": "{\"scene\":\"plan\",\"needPlan\":true,\"missingFields\":[\"startDate\",\"endDate\",\"originCity\",\"transport\",\"accommodation\"],\"follow"
+        },
+        {
+          "ms": 54,
+          "kind": "event",
+          "text": "plan_progress"
+        },
+        {
+          "ms": 54,
+          "kind": "data",
+          "event": "plan_progress",
+          "text": "{\"message\":\"正在生成计划…\",\"stage\":\"generating\"}"
+        },
+        {
+          "ms": 15061,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 30059,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 45062,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 60054,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 75052,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 90057,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 98360,
+          "kind": "event",
+          "text": "plan_draft"
+        },
+        {
+          "ms": 98360,
+          "kind": "data",
+          "event": "plan_draft",
+          "text": "{\"plan\":{\"schemaVersion\":\"1.0\",\"planId\":\"2124877624239185921\",\"title\":\"成都三日美食历史文化之旅\",\"status\":\"DRAFT\",\"version\":0,\"basic"
+        },
+        {
+          "ms": 98360,
+          "kind": "event",
+          "text": "plan_saved"
+        },
+        {
+          "ms": 98360,
+          "kind": "data",
+          "event": "plan_saved",
+          "text": "{\"planId\":\"2124877624239185921\",\"version\":0}"
+        },
+        {
+          "ms": 98360,
+          "kind": "event",
+          "text": "delta"
+        },
+        {
+          "ms": 98360,
+          "kind": "data",
+          "event": "delta",
+          "text": "{\"content\":\"已生成《成都三日美食历史文化之旅》：成都，3 天，2 人。\\n\\n其中 48 处信息待核实——当前未接入实时天气/票价/路况，相关数值请以实际为准，详情页可按类别查看具体是哪几处。\\n\\n计划已保存，点开卡片可查看每"
+        },
+        {
+          "ms": 98379,
+          "kind": "event",
+          "text": "done"
+        },
+        {
+          "ms": 98379,
+          "kind": "data",
+          "event": "done",
+          "text": "{\"messageId\":\"2124877624499232770\",\"model\":\"plan-assistant\",\"latencyMs\":\"98306\"}"
+        }
+      ],
+      "worker": 1
+    },
+    {
+      "base": "http://127.0.0.1:8088/api",
+      "content": "帮我规划成都三天，两个人，预算五千，喜欢美食和历史文化",
+      "status": 200,
+      "error": null,
+      "first_byte_ms": 48,
+      "total_ms": 102598,
+      "pings": 6,
+      "events": [
+        "meta",
+        "intent",
+        "plan_progress",
+        "plan_draft",
+        "plan_saved",
+        "delta",
+        "done"
+      ],
+      "max_gap_ms": 15006,
+      "gaps": [
+        48,
+        5,
+        0,
+        15006,
+        14996,
+        15003,
+        14991,
+        14997,
+        15004,
+        12527,
+        0,
+        0,
+        12
+      ],
+      "plan_id": "2124877642006257666",
+      "timeline": [
+        {
+          "ms": 48,
+          "kind": "event",
+          "text": "meta"
+        },
+        {
+          "ms": 48,
+          "kind": "data",
+          "event": "meta",
+          "text": "{\"sessionId\":\"2124877212002017285\",\"userMessageId\":\"2124877212064931842\"}"
+        },
+        {
+          "ms": 54,
+          "kind": "event",
+          "text": "intent"
+        },
+        {
+          "ms": 54,
+          "kind": "data",
+          "event": "intent",
+          "text": "{\"scene\":\"plan\",\"needPlan\":true,\"missingFields\":[\"startDate\",\"endDate\",\"originCity\",\"transport\",\"accommodation\"],\"follow"
+        },
+        {
+          "ms": 54,
+          "kind": "event",
+          "text": "plan_progress"
+        },
+        {
+          "ms": 54,
+          "kind": "data",
+          "event": "plan_progress",
+          "text": "{\"message\":\"正在生成计划…\",\"stage\":\"generating\"}"
+        },
+        {
+          "ms": 15061,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 30058,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 45061,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 60053,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 75051,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 90056,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 102583,
+          "kind": "event",
+          "text": "plan_draft"
+        },
+        {
+          "ms": 102583,
+          "kind": "data",
+          "event": "plan_draft",
+          "text": "{\"plan\":{\"schemaVersion\":\"1.0\",\"planId\":\"2124877642006257666\",\"title\":\"成都三天历史文化美食之旅\",\"status\":\"DRAFT\",\"version\":0,\"basic"
+        },
+        {
+          "ms": 102583,
+          "kind": "event",
+          "text": "plan_saved"
+        },
+        {
+          "ms": 102583,
+          "kind": "data",
+          "event": "plan_saved",
+          "text": "{\"planId\":\"2124877642006257666\",\"version\":0}"
+        },
+        {
+          "ms": 102583,
+          "kind": "event",
+          "text": "delta"
+        },
+        {
+          "ms": 102583,
+          "kind": "data",
+          "event": "delta",
+          "text": "{\"content\":\"已生成《成都三天历史文化美食之旅》：成都，3 天，2 人。\\n\\n其中 48 处信息待核实——当前未接入实时天气/票价/路况，相关数值请以实际为准，详情页可按类别查看具体是哪几处。\\n\\n计划已保存，点开卡片可查看每"
+        },
+        {
+          "ms": 102596,
+          "kind": "event",
+          "text": "done"
+        },
+        {
+          "ms": 102596,
+          "kind": "data",
+          "event": "done",
+          "text": "{\"messageId\":\"2124877642207584257\",\"model\":\"plan-assistant\",\"latencyMs\":\"102530\"}"
+        }
+      ],
+      "worker": 5
+    },
+    {
+      "base": "http://127.0.0.1:8088/api",
+      "content": "帮我规划成都三天，两个人，预算五千，喜欢美食和历史文化",
+      "status": 200,
+      "error": null,
+      "first_byte_ms": 50,
+      "total_ms": 103140,
+      "pings": 6,
+      "events": [
+        "meta",
+        "intent",
+        "plan_progress",
+        "plan_draft",
+        "plan_saved",
+        "delta",
+        "done"
+      ],
+      "max_gap_ms": 15004,
+      "gaps": [
+        50,
+        5,
+        0,
+        15004,
+        14996,
+        15003,
+        14991,
+        14998,
+        15004,
+        13070,
+        0,
+        0,
+        12
+      ],
+      "plan_id": "2124877644283764737",
+      "timeline": [
+        {
+          "ms": 50,
+          "kind": "event",
+          "text": "meta"
+        },
+        {
+          "ms": 50,
+          "kind": "data",
+          "event": "meta",
+          "text": "{\"sessionId\":\"2124877212002017291\",\"userMessageId\":\"2124877212064931845\"}"
+        },
+        {
+          "ms": 56,
+          "kind": "event",
+          "text": "intent"
+        },
+        {
+          "ms": 56,
+          "kind": "data",
+          "event": "intent",
+          "text": "{\"scene\":\"plan\",\"needPlan\":true,\"missingFields\":[\"startDate\",\"endDate\",\"originCity\",\"transport\",\"accommodation\"],\"follow"
+        },
+        {
+          "ms": 56,
+          "kind": "event",
+          "text": "plan_progress"
+        },
+        {
+          "ms": 56,
+          "kind": "data",
+          "event": "plan_progress",
+          "text": "{\"message\":\"正在生成计划…\",\"stage\":\"generating\"}"
+        },
+        {
+          "ms": 15061,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 30057,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 45061,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 60053,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 75051,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 90056,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 103126,
+          "kind": "event",
+          "text": "plan_draft"
+        },
+        {
+          "ms": 103126,
+          "kind": "data",
+          "event": "plan_draft",
+          "text": "{\"plan\":{\"schemaVersion\":\"1.0\",\"planId\":\"2124877644283764737\",\"title\":\"成都三天历史文化美食之旅\",\"status\":\"DRAFT\",\"version\":0,\"basic"
+        },
+        {
+          "ms": 103126,
+          "kind": "event",
+          "text": "plan_saved"
+        },
+        {
+          "ms": 103126,
+          "kind": "data",
+          "event": "plan_saved",
+          "text": "{\"planId\":\"2124877644283764737\",\"version\":0}"
+        },
+        {
+          "ms": 103126,
+          "kind": "event",
+          "text": "delta"
+        },
+        {
+          "ms": 103126,
+          "kind": "data",
+          "event": "delta",
+          "text": "{\"content\":\"已生成《成都三天历史文化美食之旅》：成都，3 天，2 人。\\n\\n其中 42 处信息待核实——当前未接入实时天气/票价/路况，相关数值请以实际为准，详情页可按类别查看具体是哪几处。\\n\\n计划已保存，点开卡片可查看每"
+        },
+        {
+          "ms": 103139,
+          "kind": "event",
+          "text": "done"
+        },
+        {
+          "ms": 103139,
+          "kind": "data",
+          "event": "done",
+          "text": "{\"messageId\":\"2124877644480897026\",\"model\":\"plan-assistant\",\"latencyMs\":\"103071\"}"
+        }
+      ],
+      "worker": 6
+    },
+    {
+      "base": "http://127.0.0.1:8088/api",
+      "content": "帮我规划成都三天，两个人，预算五千，喜欢美食和历史文化",
+      "status": 200,
+      "error": null,
+      "first_byte_ms": 47,
+      "total_ms": 119008,
+      "pings": 7,
+      "events": [
+        "meta",
+        "intent",
+        "plan_progress",
+        "plan_draft",
+        "plan_saved",
+        "delta",
+        "done"
+      ],
+      "max_gap_ms": 15007,
+      "gaps": [
+        47,
+        6,
+        0,
+        15007,
+        14997,
+        15003,
+        14991,
+        14997,
+        15005,
+        14997,
+        13939,
+        0,
+        0,
+        12
+      ],
+      "plan_id": "2124877710780260353",
+      "timeline": [
+        {
+          "ms": 47,
+          "kind": "event",
+          "text": "meta"
+        },
+        {
+          "ms": 47,
+          "kind": "data",
+          "event": "meta",
+          "text": "{\"sessionId\":\"2124877212002017282\",\"userMessageId\":\"2124877212002017288\"}"
+        },
+        {
+          "ms": 53,
+          "kind": "event",
+          "text": "intent"
+        },
+        {
+          "ms": 54,
+          "kind": "data",
+          "event": "intent",
+          "text": "{\"scene\":\"plan\",\"needPlan\":true,\"missingFields\":[\"startDate\",\"endDate\",\"originCity\",\"transport\",\"accommodation\"],\"follow"
+        },
+        {
+          "ms": 54,
+          "kind": "event",
+          "text": "plan_progress"
+        },
+        {
+          "ms": 54,
+          "kind": "data",
+          "event": "plan_progress",
+          "text": "{\"message\":\"正在生成计划…\",\"stage\":\"generating\"}"
+        },
+        {
+          "ms": 15061,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 30059,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 45062,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 60054,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 75052,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 90057,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 105055,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 118994,
+          "kind": "event",
+          "text": "plan_draft"
+        },
+        {
+          "ms": 118994,
+          "kind": "data",
+          "event": "plan_draft",
+          "text": "{\"plan\":{\"schemaVersion\":\"1.0\",\"planId\":\"2124877710780260353\",\"title\":\"成都三日美食文化之旅\",\"status\":\"DRAFT\",\"version\":0,\"basic\":"
+        },
+        {
+          "ms": 118994,
+          "kind": "event",
+          "text": "plan_saved"
+        },
+        {
+          "ms": 118994,
+          "kind": "data",
+          "event": "plan_saved",
+          "text": "{\"planId\":\"2124877710780260353\",\"version\":0}"
+        },
+        {
+          "ms": 118994,
+          "kind": "event",
+          "text": "delta"
+        },
+        {
+          "ms": 118994,
+          "kind": "data",
+          "event": "delta",
+          "text": "{\"content\":\"已生成《成都三日美食文化之旅》：成都，3 天，2 人。\\n\\n其中 48 处信息待核实——当前未接入实时天气/票价/路况，相关数值请以实际为准，详情页可按类别查看具体是哪几处。\\n\\n计划已保存，点开卡片可查看每日安"
+        },
+        {
+          "ms": 119007,
+          "kind": "event",
+          "text": "done"
+        },
+        {
+          "ms": 119007,
+          "kind": "data",
+          "event": "done",
+          "text": "{\"messageId\":\"2124877711036112897\",\"model\":\"plan-assistant\",\"latencyMs\":\"118941\"}"
+        }
+      ],
+      "worker": 2
+    },
+    {
+      "base": "http://127.0.0.1:8088/api",
+      "content": "帮我规划成都三天，两个人，预算五千，喜欢美食和历史文化",
+      "status": 200,
+      "error": null,
+      "first_byte_ms": 51,
+      "total_ms": 120188,
+      "pings": 8,
+      "events": [
+        "meta",
+        "intent",
+        "plan_progress",
+        "plan_draft",
+        "plan_saved",
+        "delta",
+        "done"
+      ],
+      "max_gap_ms": 15006,
+      "gaps": [
+        51,
+        4,
+        0,
+        15006,
+        14996,
+        15003,
+        14991,
+        14998,
+        15004,
+        14998,
+        15000,
+        114,
+        0,
+        0,
+        17
+      ],
+      "plan_id": "2124877715737927681",
+      "timeline": [
+        {
+          "ms": 51,
+          "kind": "event",
+          "text": "meta"
+        },
+        {
+          "ms": 51,
+          "kind": "data",
+          "event": "meta",
+          "text": "{\"sessionId\":\"2124877212002017290\",\"userMessageId\":\"2124877212064931846\"}"
+        },
+        {
+          "ms": 55,
+          "kind": "event",
+          "text": "intent"
+        },
+        {
+          "ms": 55,
+          "kind": "data",
+          "event": "intent",
+          "text": "{\"scene\":\"plan\",\"needPlan\":true,\"missingFields\":[\"startDate\",\"endDate\",\"originCity\",\"transport\",\"accommodation\"],\"follow"
+        },
+        {
+          "ms": 55,
+          "kind": "event",
+          "text": "plan_progress"
+        },
+        {
+          "ms": 55,
+          "kind": "data",
+          "event": "plan_progress",
+          "text": "{\"message\":\"正在生成计划…\",\"stage\":\"generating\"}"
+        },
+        {
+          "ms": 15061,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 30058,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 45062,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 60053,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 75052,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 90056,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 105054,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 120055,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 120169,
+          "kind": "event",
+          "text": "plan_draft"
+        },
+        {
+          "ms": 120169,
+          "kind": "data",
+          "event": "plan_draft",
+          "text": "{\"plan\":{\"schemaVersion\":\"1.0\",\"planId\":\"2124877715737927681\",\"title\":\"成都三天美食历史文化之旅\",\"status\":\"DRAFT\",\"version\":0,\"basic"
+        },
+        {
+          "ms": 120170,
+          "kind": "event",
+          "text": "plan_saved"
+        },
+        {
+          "ms": 120170,
+          "kind": "data",
+          "event": "plan_saved",
+          "text": "{\"planId\":\"2124877715737927681\",\"version\":0}"
+        },
+        {
+          "ms": 120170,
+          "kind": "event",
+          "text": "delta"
+        },
+        {
+          "ms": 120170,
+          "kind": "data",
+          "event": "delta",
+          "text": "{\"content\":\"已生成《成都三天美食历史文化之旅》：成都，3 天，2 人。\\n\\n其中 53 处信息待核实——当前未接入实时天气/票价/路况，相关数值请以实际为准，详情页可按类别查看具体是哪几处。\\n\\n计划已保存，点开卡片可查看每"
+        },
+        {
+          "ms": 120187,
+          "kind": "event",
+          "text": "done"
+        },
+        {
+          "ms": 120187,
+          "kind": "data",
+          "event": "done",
+          "text": "{\"messageId\":\"2124877716002168834\",\"model\":\"plan-assistant\",\"latencyMs\":\"120114\"}"
+        }
+      ],
+      "worker": 4
+    },
+    {
+      "base": "http://127.0.0.1:8088/api",
+      "content": "帮我规划成都三天，两个人，预算五千，喜欢美食和历史文化",
+      "status": 200,
+      "error": null,
+      "first_byte_ms": 50,
+      "total_ms": 125796,
+      "pings": 8,
+      "events": [
+        "meta",
+        "intent",
+        "plan_progress",
+        "plan_draft",
+        "plan_saved",
+        "delta",
+        "done"
+      ],
+      "max_gap_ms": 15004,
+      "gaps": [
+        50,
+        6,
+        0,
+        15004,
+        14996,
+        15003,
+        14991,
+        14998,
+        15004,
+        14997,
+        15000,
+        5729,
+        0,
+        0,
+        11
+      ],
+      "plan_id": "2124877739301527554",
+      "timeline": [
+        {
+          "ms": 50,
+          "kind": "event",
+          "text": "meta"
+        },
+        {
+          "ms": 50,
+          "kind": "data",
+          "event": "meta",
+          "text": "{\"sessionId\":\"2124877212064931843\",\"userMessageId\":\"2124877212064931847\"}"
+        },
+        {
+          "ms": 56,
+          "kind": "event",
+          "text": "intent"
+        },
+        {
+          "ms": 56,
+          "kind": "data",
+          "event": "intent",
+          "text": "{\"scene\":\"plan\",\"needPlan\":true,\"missingFields\":[\"startDate\",\"endDate\",\"originCity\",\"transport\",\"accommodation\"],\"follow"
+        },
+        {
+          "ms": 56,
+          "kind": "event",
+          "text": "plan_progress"
+        },
+        {
+          "ms": 56,
+          "kind": "data",
+          "event": "plan_progress",
+          "text": "{\"message\":\"正在生成计划…\",\"stage\":\"generating\"}"
+        },
+        {
+          "ms": 15060,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 30057,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 45061,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 60052,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 75050,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 90055,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 105053,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 120054,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 125783,
+          "kind": "event",
+          "text": "plan_draft"
+        },
+        {
+          "ms": 125783,
+          "kind": "data",
+          "event": "plan_draft",
+          "text": "{\"plan\":{\"schemaVersion\":\"1.0\",\"planId\":\"2124877739301527554\",\"title\":\"成都三天历史文化美食之旅\",\"status\":\"DRAFT\",\"version\":0,\"basic"
+        },
+        {
+          "ms": 125783,
+          "kind": "event",
+          "text": "plan_saved"
+        },
+        {
+          "ms": 125783,
+          "kind": "data",
+          "event": "plan_saved",
+          "text": "{\"planId\":\"2124877739301527554\",\"version\":0}"
+        },
+        {
+          "ms": 125783,
+          "kind": "event",
+          "text": "delta"
+        },
+        {
+          "ms": 125783,
+          "kind": "data",
+          "event": "delta",
+          "text": "{\"content\":\"已生成《成都三天历史文化美食之旅》：成都，3 天，2 人。\\n\\n其中 63 处信息待核实——当前未接入实时天气/票价/路况，相关数值请以实际为准，详情页可按类别查看具体是哪几处。\\n\\n计划已保存，点开卡片可查看每"
+        },
+        {
+          "ms": 125795,
+          "kind": "event",
+          "text": "done"
+        },
+        {
+          "ms": 125795,
+          "kind": "data",
+          "event": "done",
+          "text": "{\"messageId\":\"2124877739569963009\",\"model\":\"plan-assistant\",\"latencyMs\":\"125728\"}"
+        }
+      ],
+      "worker": 8
+    },
+    {
+      "base": "http://127.0.0.1:8088/api",
+      "content": "帮我规划成都三天，两个人，预算五千，喜欢美食和历史文化",
+      "status": 200,
+      "error": null,
+      "first_byte_ms": 48,
+      "total_ms": 139094,
+      "pings": 9,
+      "events": [
+        "meta",
+        "intent",
+        "plan_progress",
+        "plan_draft",
+        "plan_saved",
+        "delta",
+        "done"
+      ],
+      "max_gap_ms": 15008,
+      "gaps": [
+        48,
+        4,
+        0,
+        15008,
+        14997,
+        15003,
+        14991,
+        14997,
+        15005,
+        14998,
+        15000,
+        14999,
+        4025,
+        0,
+        0,
+        12
+      ],
+      "plan_id": "2124877795115130882",
+      "timeline": [
+        {
+          "ms": 48,
+          "kind": "event",
+          "text": "meta"
+        },
+        {
+          "ms": 48,
+          "kind": "data",
+          "event": "meta",
+          "text": "{\"sessionId\":\"2124877212002017284\",\"userMessageId\":\"2124877212002017286\"}"
+        },
+        {
+          "ms": 52,
+          "kind": "event",
+          "text": "intent"
+        },
+        {
+          "ms": 52,
+          "kind": "data",
+          "event": "intent",
+          "text": "{\"scene\":\"plan\",\"needPlan\":true,\"missingFields\":[\"startDate\",\"endDate\",\"originCity\",\"transport\",\"accommodation\"],\"follow"
+        },
+        {
+          "ms": 52,
+          "kind": "event",
+          "text": "plan_progress"
+        },
+        {
+          "ms": 52,
+          "kind": "data",
+          "event": "plan_progress",
+          "text": "{\"message\":\"正在生成计划…\",\"stage\":\"generating\"}"
+        },
+        {
+          "ms": 15061,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 30058,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 45062,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 60054,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 75052,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 90057,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 105055,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 120055,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 135055,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 139080,
+          "kind": "event",
+          "text": "plan_draft"
+        },
+        {
+          "ms": 139080,
+          "kind": "data",
+          "event": "plan_draft",
+          "text": "{\"plan\":{\"schemaVersion\":\"1.0\",\"planId\":\"2124877795115130882\",\"title\":\"成都三天美食历史文化之旅\",\"status\":\"DRAFT\",\"version\":0,\"basic"
+        },
+        {
+          "ms": 139080,
+          "kind": "event",
+          "text": "plan_saved"
+        },
+        {
+          "ms": 139080,
+          "kind": "data",
+          "event": "plan_saved",
+          "text": "{\"planId\":\"2124877795115130882\",\"version\":0}"
+        },
+        {
+          "ms": 139080,
+          "kind": "event",
+          "text": "delta"
+        },
+        {
+          "ms": 139080,
+          "kind": "data",
+          "event": "delta",
+          "text": "{\"content\":\"已生成《成都三天美食历史文化之旅》：成都，3 天，2 人。\\n\\n其中 53 处信息待核实——当前未接入实时天气/票价/路况，相关数值请以实际为准，详情页可按类别查看具体是哪几处。\\n\\n计划已保存，点开卡片可查看每"
+        },
+        {
+          "ms": 139092,
+          "kind": "event",
+          "text": "done"
+        },
+        {
+          "ms": 139092,
+          "kind": "data",
+          "event": "done",
+          "text": "{\"messageId\":\"2124877795308068866\",\"model\":\"plan-assistant\",\"latencyMs\":\"139029\"}"
+        }
+      ],
+      "worker": 3
+    },
+    {
+      "base": "http://127.0.0.1:8088/api",
+      "content": "帮我规划成都三天，两个人，预算五千，喜欢美食和历史文化",
+      "status": 200,
+      "error": null,
+      "first_byte_ms": 50,
+      "total_ms": 164197,
+      "pings": 10,
+      "events": [
+        "meta",
+        "intent",
+        "plan_progress",
+        "plan_draft",
+        "plan_saved",
+        "delta",
+        "done"
+      ],
+      "max_gap_ms": 15005,
+      "gaps": [
+        50,
+        4,
+        0,
+        15005,
+        14996,
+        15003,
+        14991,
+        14998,
+        15004,
+        14997,
+        15000,
+        14999,
+        14999,
+        14130,
+        0,
+        0,
+        12
+      ],
+      "plan_id": "2124877900400549890",
+      "timeline": [
+        {
+          "ms": 50,
+          "kind": "event",
+          "text": "meta"
+        },
+        {
+          "ms": 50,
+          "kind": "data",
+          "event": "meta",
+          "text": "{\"sessionId\":\"2124877212002017287\",\"userMessageId\":\"2124877212064931844\"}"
+        },
+        {
+          "ms": 55,
+          "kind": "event",
+          "text": "intent"
+        },
+        {
+          "ms": 55,
+          "kind": "data",
+          "event": "intent",
+          "text": "{\"scene\":\"plan\",\"needPlan\":true,\"missingFields\":[\"startDate\",\"endDate\",\"originCity\",\"transport\",\"accommodation\"],\"follow"
+        },
+        {
+          "ms": 55,
+          "kind": "event",
+          "text": "plan_progress"
+        },
+        {
+          "ms": 55,
+          "kind": "data",
+          "event": "plan_progress",
+          "text": "{\"message\":\"正在生成计划…\",\"stage\":\"generating\"}"
+        },
+        {
+          "ms": 15061,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 30057,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 45061,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 60053,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 75051,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 90056,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 105054,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 120054,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 135053,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 150053,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 164183,
+          "kind": "event",
+          "text": "plan_draft"
+        },
+        {
+          "ms": 164183,
+          "kind": "data",
+          "event": "plan_draft",
+          "text": "{\"plan\":{\"schemaVersion\":\"1.0\",\"planId\":\"2124877900400549890\",\"title\":\"成都三日美食文化之旅\",\"status\":\"DRAFT\",\"version\":0,\"basic\":"
+        },
+        {
+          "ms": 164184,
+          "kind": "event",
+          "text": "plan_saved"
+        },
+        {
+          "ms": 164184,
+          "kind": "data",
+          "event": "plan_saved",
+          "text": "{\"planId\":\"2124877900400549890\",\"version\":0}"
+        },
+        {
+          "ms": 164184,
+          "kind": "event",
+          "text": "delta"
+        },
+        {
+          "ms": 164184,
+          "kind": "data",
+          "event": "delta",
+          "text": "{\"content\":\"已生成《成都三日美食文化之旅》：成都，3 天，2 人。\\n\\n其中 45 处信息待核实——当前未接入实时天气/票价/路况，相关数值请以实际为准，详情页可按类别查看具体是哪几处。\\n\\n计划已保存，点开卡片可查看每日安"
+        },
+        {
+          "ms": 164196,
+          "kind": "event",
+          "text": "done"
+        },
+        {
+          "ms": 164196,
+          "kind": "data",
+          "event": "done",
+          "text": "{\"messageId\":\"2124877900597682178\",\"model\":\"plan-assistant\",\"latencyMs\":\"164128\"}"
+        }
+      ],
+      "worker": 7
+    }
+  ]
+}

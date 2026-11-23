@@ -3,6 +3,8 @@ import type { Id, TravelPlan } from '@/api/types'
 import { parseFollowUps, type FollowUpQuestion } from './followup'
 import { toStreamError, type StreamError } from './stream-error'
 
+import { parseFrame } from './sse-frame'
+
 export type { StreamError } from './stream-error'
 export type { FollowUpOption, FollowUpQuestion } from './followup'
 
@@ -129,24 +131,15 @@ export async function streamChat(
 }
 
 function dispatch(chunk: string, handlers: StreamHandlers): void {
-  let event = 'message'
-  const dataLines: string[] = []
-  for (const line of chunk.split('\n')) {
-    if (line.startsWith('event:')) {
-      event = line.slice(6).trim()
-    } else if (line.startsWith('data:')) {
-      dataLines.push(line.slice(5).trim())
-    }
-  }
-  if (dataLines.length === 0) return
-  const raw = dataLines.join('\n')
+  const frame = parseFrame(chunk)
+  if (!frame) return
   let payload: Record<string, unknown>
   try {
-    payload = JSON.parse(raw)
+    payload = JSON.parse(frame.data)
   } catch {
     return
   }
-  switch (event) {
+  switch (frame.event) {
     case 'meta':
       handlers.onMeta?.(payload as never)
       break

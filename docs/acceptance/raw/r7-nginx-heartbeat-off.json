@@ -1,0 +1,82 @@
+{
+  "label": "nginx-heartbeat-off",
+  "base": "http://127.0.0.1:8088/api",
+  "concurrency": 1,
+  "at": "2026-11-23 22:38:46",
+  "summary": [
+    {
+      "label": "nginx-heartbeat-off",
+      "ok": false,
+      "http_status": 200,
+      "first_byte_ms": 78,
+      "total_ms": 60017,
+      "pings": 0,
+      "max_gap_ms": 78,
+      "events": [
+        "meta",
+        "intent",
+        "plan_progress"
+      ],
+      "plan_id": null,
+      "error": null
+    }
+  ],
+  "runs": [
+    {
+      "base": "http://127.0.0.1:8088/api",
+      "content": "帮我规划成都三天，两个人，预算五千，喜欢美食和历史文化",
+      "status": 200,
+      "error": null,
+      "first_byte_ms": 78,
+      "total_ms": 60017,
+      "pings": 0,
+      "events": [
+        "meta",
+        "intent",
+        "plan_progress"
+      ],
+      "max_gap_ms": 78,
+      "gaps": [
+        78,
+        33,
+        0
+      ],
+      "plan_id": null,
+      "timeline": [
+        {
+          "ms": 78,
+          "kind": "event",
+          "text": "meta"
+        },
+        {
+          "ms": 78,
+          "kind": "data",
+          "event": "meta",
+          "text": "{\"sessionId\":\"2124875057543131138\",\"userMessageId\":\"2124875057543131139\"}"
+        },
+        {
+          "ms": 112,
+          "kind": "event",
+          "text": "intent"
+        },
+        {
+          "ms": 112,
+          "kind": "data",
+          "event": "intent",
+          "text": "{\"scene\":\"plan\",\"needPlan\":true,\"missingFields\":[\"startDate\",\"endDate\",\"originCity\",\"transport\",\"accommodation\"],\"follow"
+        },
+        {
+          "ms": 112,
+          "kind": "event",
+          "text": "plan_progress"
+        },
+        {
+          "ms": 112,
+          "kind": "data",
+          "event": "plan_progress",
+          "text": "{\"stage\":\"generating\",\"message\":\"正在生成计划…\"}"
+        }
+      ]
+    }
+  ]
+}

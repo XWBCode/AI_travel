@@ -48,3 +48,6 @@ replay_pid*
 # 本地临时响应（真实模型冒烟）
 var_*.json
 smoke*.json
+
+# 本地运行体（nginx 解压目录、临时日志），不入库；配置模板在 deploy/
+.tools/

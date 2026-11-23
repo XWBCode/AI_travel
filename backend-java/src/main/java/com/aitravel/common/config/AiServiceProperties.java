@@ -56,4 +56,22 @@ public class AiServiceProperties {
      * **要提并发就提 {@code streamPoolSize}（线程），不要提这个值。**
      */
     private int streamQueueCapacity = 0;
+
+    /**
+     * SSE 心跳开关。默认开。
+     * <p>
+     * 存在的唯一理由是「对照组」：R7 要证明的是「心跳让长连接不被反代掐断」，
+     * 那就必须有一个同样配置、只是关掉心跳的分支在 60s 处收到 504。
+     * 生产环境没有关掉它的理由。
+     */
+    private boolean sseHeartbeatEnabled = true;
+
+    /**
+     * 心跳间隔。默认 15s。
+     * <p>
+     * 取 15s 的依据是反代的默认空闲超时：Nginx {@code proxy_read_timeout} 默认 60s，
+     * 心跳必须显著小于它（15s 给了 3 次容错），否则一次 GC 停顿就足以把连接判死。
+     * 心跳本身是 SSE 注释行 {@code : ping}，不产生前端事件，也不消耗模型额度。
+     */
+    private long sseHeartbeatIntervalMs = 15000L;
 }

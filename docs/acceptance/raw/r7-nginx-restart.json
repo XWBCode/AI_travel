@@ -1,0 +1,94 @@
+{
+  "label": "nginx-restart",
+  "base": "http://127.0.0.1:8088/api",
+  "concurrency": 1,
+  "at": "2026-11-23 22:45:12",
+  "summary": [
+    {
+      "label": "nginx-restart",
+      "ok": false,
+      "http_status": 200,
+      "first_byte_ms": 47,
+      "total_ms": 38879,
+      "pings": 2,
+      "max_gap_ms": 15005,
+      "events": [
+        "meta",
+        "intent",
+        "plan_progress"
+      ],
+      "plan_id": null,
+      "error": "ConnectionResetError: [WinError 10054] 远程主机强迫关闭了一个现有的连接。"
+    }
+  ],
+  "runs": [
+    {
+      "base": "http://127.0.0.1:8088/api",
+      "content": "帮我规划西安四天，喜欢历史",
+      "status": 200,
+      "error": "ConnectionResetError: [WinError 10054] 远程主机强迫关闭了一个现有的连接。",
+      "first_byte_ms": 47,
+      "total_ms": 38879,
+      "pings": 2,
+      "events": [
+        "meta",
+        "intent",
+        "plan_progress"
+      ],
+      "max_gap_ms": 15005,
+      "gaps": [
+        47,
+        6,
+        0,
+        14996,
+        15005
+      ],
+      "plan_id": null,
+      "timeline": [
+        {
+          "ms": 47,
+          "kind": "event",
+          "text": "meta"
+        },
+        {
+          "ms": 47,
+          "kind": "data",
+          "event": "meta",
+          "text": "{\"sessionId\":\"2124876766004895745\",\"userMessageId\":\"2124876766004895746\"}"
+        },
+        {
+          "ms": 53,
+          "kind": "event",
+          "text": "intent"
+        },
+        {
+          "ms": 53,
+          "kind": "data",
+          "event": "intent",
+          "text": "{\"scene\":\"plan\",\"needPlan\":true,\"missingFields\":[\"startDate\",\"endDate\",\"originCity\",\"travelers\",\"budget\",\"transport\",\"ac"
+        },
+        {
+          "ms": 53,
+          "kind": "event",
+          "text": "plan_progress"
+        },
+        {
+          "ms": 54,
+          "kind": "data",
+          "event": "plan_progress",
+          "text": "{\"message\":\"正在生成计划…\",\"stage\":\"generating\"}"
+        },
+        {
+          "ms": 15050,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 30056,
+          "kind": "ping",
+          "text": ":ping"
+        }
+      ]
+    }
+  ]
+}

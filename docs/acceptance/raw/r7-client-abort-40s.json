@@ -1,0 +1,100 @@
+{
+  "label": "client-abort-40s",
+  "base": "http://127.0.0.1:8088/api",
+  "concurrency": 1,
+  "at": "2026-11-23 22:43:42",
+  "summary": [
+    {
+      "label": "client-abort-40s",
+      "ok": false,
+      "http_status": 200,
+      "first_byte_ms": 47,
+      "total_ms": 45060,
+      "pings": 3,
+      "max_gap_ms": 15012,
+      "events": [
+        "meta",
+        "intent",
+        "plan_progress"
+      ],
+      "plan_id": null,
+      "error": "客户端在 40.0s 主动断开"
+    }
+  ],
+  "runs": [
+    {
+      "base": "http://127.0.0.1:8088/api",
+      "content": "帮我规划成都三天，两个人，预算五千，喜欢美食和历史文化",
+      "status": 200,
+      "error": "客户端在 40.0s 主动断开",
+      "first_byte_ms": 47,
+      "total_ms": 45060,
+      "pings": 3,
+      "events": [
+        "meta",
+        "intent",
+        "plan_progress"
+      ],
+      "max_gap_ms": 15012,
+      "gaps": [
+        47,
+        5,
+        0,
+        14993,
+        15012,
+        14999
+      ],
+      "plan_id": null,
+      "timeline": [
+        {
+          "ms": 47,
+          "kind": "event",
+          "text": "meta"
+        },
+        {
+          "ms": 47,
+          "kind": "data",
+          "event": "meta",
+          "text": "{\"sessionId\":\"2124876361673990145\",\"userMessageId\":\"2124876361673990146\"}"
+        },
+        {
+          "ms": 53,
+          "kind": "event",
+          "text": "intent"
+        },
+        {
+          "ms": 53,
+          "kind": "data",
+          "event": "intent",
+          "text": "{\"scene\":\"plan\",\"needPlan\":true,\"missingFields\":[\"startDate\",\"endDate\",\"originCity\",\"transport\",\"accommodation\"],\"follow"
+        },
+        {
+          "ms": 53,
+          "kind": "event",
+          "text": "plan_progress"
+        },
+        {
+          "ms": 54,
+          "kind": "data",
+          "event": "plan_progress",
+          "text": "{\"message\":\"正在生成计划…\",\"stage\":\"generating\"}"
+        },
+        {
+          "ms": 15048,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 30060,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 45060,
+          "kind": "ping",
+          "text": ":ping"
+        }
+      ]
+    }
+  ]
+}

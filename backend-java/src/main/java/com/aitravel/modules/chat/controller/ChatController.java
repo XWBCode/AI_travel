@@ -12,6 +12,7 @@ import com.aitravel.modules.chat.entity.ChatMessage;
 import com.aitravel.modules.chat.entity.ChatSession;
 import com.aitravel.modules.chat.service.AiServiceClient;
 import com.aitravel.modules.chat.service.ChatSessionService;
+import com.aitravel.modules.chat.service.SseHeartbeat;
 import com.aitravel.modules.plan.service.PlanIntentService;
 import com.aitravel.modules.plan.service.PlanService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -75,6 +76,7 @@ public class ChatController {
     private final PlanIntentService planIntentService;
     private final ObjectMapper objectMapper;
     private final AiServiceProperties aiProperties;
+    private final SseHeartbeat sseHeartbeat;
     @Qualifier("aiStreamExecutor")
     private final ExecutorService aiStreamExecutor;
 
@@ -111,15 +113,23 @@ public class ChatController {
         SseEmitter emitter = new SseEmitter(sseTimeoutMs());
         AtomicBoolean canceled = new AtomicBoolean(false);
 
+        // 心跳必须覆盖「从建流到结束」的整段静默期：计划生成期间服务端可能 90–170s 不发任何字节，
+        // 反代的默认 60s 空闲超时会把它当死连接掐掉（R7）。三条终止路径都要摘掉心跳任务。
         emitter.onTimeout(() -> {
             canceled.set(true);
+            sseHeartbeat.stop(emitter);
             log.warn("SSE 超时 sessionId={}", session.getId());
         });
         emitter.onError(e -> {
             canceled.set(true);
+            sseHeartbeat.stop(emitter);
             log.warn("SSE 异常 sessionId={} err={}", session.getId(), e.getMessage());
         });
-        emitter.onCompletion(() -> log.debug("SSE 结束 sessionId={}", session.getId()));
+        emitter.onCompletion(() -> {
+            sseHeartbeat.stop(emitter);
+            log.debug("SSE 结束 sessionId={}", session.getId());
+        });
+        sseHeartbeat.start(emitter);
 
         try {
             aiStreamExecutor.execute(() -> {
@@ -131,6 +141,7 @@ public class ChatController {
                     log.error("流式对话处理异常 sessionId={}", session.getId(), e);
                     completeWithError(emitter, ErrorCode.INTERNAL_ERROR.getCode(), "服务内部错误，请稍后重试");
                 } finally {
+                    sseHeartbeat.stop(emitter);
                     MDC.remove(TraceIdFilter.MDC_KEY);
                 }
             });

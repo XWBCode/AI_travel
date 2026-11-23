@@ -1,0 +1,110 @@
+{
+  "label": "model-unreachable",
+  "base": "http://127.0.0.1:8088/api",
+  "concurrency": 1,
+  "at": "2026-11-23 22:49:37",
+  "summary": [
+    {
+      "label": "model-unreachable",
+      "ok": false,
+      "http_status": 200,
+      "first_byte_ms": 49,
+      "total_ms": 2217,
+      "pings": 0,
+      "max_gap_ms": 2152,
+      "events": [
+        "meta",
+        "intent",
+        "plan_progress",
+        "plan_rejected",
+        "error"
+      ],
+      "plan_id": null,
+      "error": "error 事件 code=50201 模型服务连接失败: ConnectError"
+    }
+  ],
+  "runs": [
+    {
+      "base": "http://127.0.0.1:8088/api",
+      "content": "帮我规划成都三天",
+      "status": 200,
+      "error": "error 事件 code=50201 模型服务连接失败: ConnectError",
+      "first_byte_ms": 49,
+      "total_ms": 2217,
+      "pings": 0,
+      "events": [
+        "meta",
+        "intent",
+        "plan_progress",
+        "plan_rejected",
+        "error"
+      ],
+      "max_gap_ms": 2152,
+      "gaps": [
+        49,
+        8,
+        0,
+        2152,
+        5
+      ],
+      "plan_id": null,
+      "timeline": [
+        {
+          "ms": 49,
+          "kind": "event",
+          "text": "meta"
+        },
+        {
+          "ms": 49,
+          "kind": "data",
+          "event": "meta",
+          "text": "{\"sessionId\":\"2124878030868570114\",\"userMessageId\":\"2124878030868570115\"}"
+        },
+        {
+          "ms": 57,
+          "kind": "event",
+          "text": "intent"
+        },
+        {
+          "ms": 57,
+          "kind": "data",
+          "event": "intent",
+          "text": "{\"scene\":\"plan\",\"needPlan\":true,\"missingFields\":[\"startDate\",\"endDate\",\"originCity\",\"travelers\",\"budget\",\"interests\",\"tr"
+        },
+        {
+          "ms": 57,
+          "kind": "event",
+          "text": "plan_progress"
+        },
+        {
+          "ms": 57,
+          "kind": "data",
+          "event": "plan_progress",
+          "text": "{\"message\":\"正在生成计划…\",\"stage\":\"generating\"}"
+        },
+        {
+          "ms": 2210,
+          "kind": "event",
+          "text": "plan_rejected"
+        },
+        {
+          "ms": 2210,
+          "kind": "data",
+          "event": "plan_rejected",
+          "text": "{\"reason\":\"SCHEMA_VIOLATION\",\"message\":\"模型服务连接失败: ConnectError\"}"
+        },
+        {
+          "ms": 2216,
+          "kind": "event",
+          "text": "error"
+        },
+        {
+          "ms": 2216,
+          "kind": "data",
+          "event": "error",
+          "text": "{\"code\":50201,\"message\":\"模型服务连接失败: ConnectError\"}"
+        }
+      ]
+    }
+  ]
+}

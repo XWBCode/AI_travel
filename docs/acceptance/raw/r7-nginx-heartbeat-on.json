@@ -1,0 +1,180 @@
+{
+  "label": "nginx-heartbeat-on",
+  "base": "http://127.0.0.1:8088/api",
+  "concurrency": 1,
+  "at": "2026-11-23 22:42:47",
+  "summary": [
+    {
+      "label": "nginx-heartbeat-on",
+      "ok": true,
+      "http_status": 200,
+      "first_byte_ms": 116,
+      "total_ms": 113251,
+      "pings": 7,
+      "max_gap_ms": 15009,
+      "events": [
+        "meta",
+        "intent",
+        "plan_progress",
+        "plan_draft",
+        "plan_saved",
+        "delta",
+        "done"
+      ],
+      "plan_id": "2124876318153891842",
+      "error": null
+    }
+  ],
+  "runs": [
+    {
+      "base": "http://127.0.0.1:8088/api",
+      "content": "帮我规划成都三天，两个人，预算五千，喜欢美食和历史文化",
+      "status": 200,
+      "error": null,
+      "first_byte_ms": 116,
+      "total_ms": 113251,
+      "pings": 7,
+      "events": [
+        "meta",
+        "intent",
+        "plan_progress",
+        "plan_draft",
+        "plan_saved",
+        "delta",
+        "done"
+      ],
+      "max_gap_ms": 15009,
+      "gaps": [
+        116,
+        50,
+        0,
+        14949,
+        14992,
+        15006,
+        14996,
+        15009,
+        15000,
+        14997,
+        8101,
+        0,
+        0,
+        17
+      ],
+      "plan_id": "2124876318153891842",
+      "timeline": [
+        {
+          "ms": 116,
+          "kind": "event",
+          "text": "meta"
+        },
+        {
+          "ms": 116,
+          "kind": "data",
+          "event": "meta",
+          "text": "{\"sessionId\":\"2124875844277231617\",\"userMessageId\":\"2124875844335951874\"}"
+        },
+        {
+          "ms": 167,
+          "kind": "event",
+          "text": "intent"
+        },
+        {
+          "ms": 167,
+          "kind": "data",
+          "event": "intent",
+          "text": "{\"scene\":\"plan\",\"needPlan\":true,\"missingFields\":[\"startDate\",\"endDate\",\"originCity\",\"transport\",\"accommodation\"],\"follow"
+        },
+        {
+          "ms": 168,
+          "kind": "event",
+          "text": "plan_progress"
+        },
+        {
+          "ms": 168,
+          "kind": "data",
+          "event": "plan_progress",
+          "text": "{\"message\":\"正在生成计划…\",\"stage\":\"generating\"}"
+        },
+        {
+          "ms": 15118,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 30110,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 45117,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 60113,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 75122,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 90123,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 105120,
+          "kind": "ping",
+          "text": ":ping"
+        },
+        {
+          "ms": 113221,
+          "kind": "event",
+          "text": "plan_draft"
+        },
+        {
+          "ms": 113222,
+          "kind": "data",
+          "event": "plan_draft",
+          "text": "{\"plan\":{\"schemaVersion\":\"1.0\",\"planId\":\"2124876318153891842\",\"title\":\"成都三天文化美食之旅\",\"status\":\"DRAFT\",\"version\":0,\"basic\":"
+        },
+        {
+          "ms": 113222,
+          "kind": "event",
+          "text": "plan_saved"
+        },
+        {
+          "ms": 113222,
+          "kind": "data",
+          "event": "plan_saved",
+          "text": "{\"planId\":\"2124876318153891842\",\"version\":0}"
+        },
+        {
+          "ms": 113223,
+          "kind": "event",
+          "text": "delta"
+        },
+        {
+          "ms": 113223,
+          "kind": "data",
+          "event": "delta",
+          "text": "{\"content\":\"已生成《成都三天文化美食之旅》：成都，3 天，2 人。\\n\\n其中 48 处信息待核实——当前未接入实时天气/票价/路况，相关数值请以实际为准，详情页可按类别查看具体是哪几处。\\n\\n计划已保存，点开卡片可查看每日安"
+        },
+        {
+          "ms": 113241,
+          "kind": "event",
+          "text": "done"
+        },
+        {
+          "ms": 113241,
+          "kind": "data",
+          "event": "done",
+          "text": "{\"messageId\":\"2124876318871117826\",\"model\":\"plan-assistant\",\"latencyMs\":\"113058\"}"
+        }
+      ]
+    }
+  ]
+}

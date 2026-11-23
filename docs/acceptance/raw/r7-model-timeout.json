@@ -1,0 +1,110 @@
+{
+  "label": "model-timeout",
+  "base": "http://127.0.0.1:8088/api",
+  "concurrency": 1,
+  "at": "2026-11-23 22:50:07",
+  "summary": [
+    {
+      "label": "model-timeout",
+      "ok": false,
+      "http_status": 200,
+      "first_byte_ms": 21,
+      "total_ms": 1224,
+      "pings": 0,
+      "max_gap_ms": 1183,
+      "events": [
+        "meta",
+        "intent",
+        "plan_progress",
+        "plan_rejected",
+        "error"
+      ],
+      "plan_id": null,
+      "error": "error 事件 code=50201 模型服务响应超时"
+    }
+  ],
+  "runs": [
+    {
+      "base": "http://127.0.0.1:8088/api",
+      "content": "帮我规划成都三天",
+      "status": 200,
+      "error": "error 事件 code=50201 模型服务响应超时",
+      "first_byte_ms": 21,
+      "total_ms": 1224,
+      "pings": 0,
+      "events": [
+        "meta",
+        "intent",
+        "plan_progress",
+        "plan_rejected",
+        "error"
+      ],
+      "max_gap_ms": 1183,
+      "gaps": [
+        21,
+        9,
+        0,
+        1183,
+        6
+      ],
+      "plan_id": null,
+      "timeline": [
+        {
+          "ms": 21,
+          "kind": "event",
+          "text": "meta"
+        },
+        {
+          "ms": 21,
+          "kind": "data",
+          "event": "meta",
+          "text": "{\"sessionId\":\"2124878159658868737\",\"userMessageId\":\"2124878159658868738\"}"
+        },
+        {
+          "ms": 31,
+          "kind": "event",
+          "text": "intent"
+        },
+        {
+          "ms": 31,
+          "kind": "data",
+          "event": "intent",
+          "text": "{\"scene\":\"plan\",\"needPlan\":true,\"missingFields\":[\"startDate\",\"endDate\",\"originCity\",\"travelers\",\"budget\",\"interests\",\"tr"
+        },
+        {
+          "ms": 31,
+          "kind": "event",
+          "text": "plan_progress"
+        },
+        {
+          "ms": 31,
+          "kind": "data",
+          "event": "plan_progress",
+          "text": "{\"message\":\"正在生成计划…\",\"stage\":\"generating\"}"
+        },
+        {
+          "ms": 1215,
+          "kind": "event",
+          "text": "plan_rejected"
+        },
+        {
+          "ms": 1215,
+          "kind": "data",
+          "event": "plan_rejected",
+          "text": "{\"reason\":\"SCHEMA_VIOLATION\",\"message\":\"模型服务响应超时\"}"
+        },
+        {
+          "ms": 1221,
+          "kind": "event",
+          "text": "error"
+        },
+        {
+          "ms": 1222,
+          "kind": "data",
+          "event": "error",
+          "text": "{\"code\":50201,\"message\":\"模型服务响应超时\"}"
+        }
+      ]
+    }
+  ]
+}

@@ -4,6 +4,7 @@ import com.aitravel.common.config.AiServiceProperties;
 import com.aitravel.modules.chat.entity.ChatMessage;
 import com.aitravel.modules.chat.service.AiServiceClient;
 import com.aitravel.modules.chat.service.ChatSessionService;
+import com.aitravel.modules.chat.service.SseHeartbeat;
 import com.aitravel.modules.plan.service.PlanIntentService;
 import com.aitravel.modules.plan.service.PlanService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -55,10 +56,21 @@ class ChatPlanAbortTest {
         when(sessions.saveAssistantMessage(anyLong(), anyLong(), anyString(), anyString(),
                 anyLong(), anyString(), any())).thenReturn(saved);
 
-        // 执行器只在 stream() 里用到，这里直接调 runPlan，传 null 即可
+        // 执行器只在 stream() 里用到，这里直接调 runPlan，传 null 即可；
+        // 心跳在这些用例里没有意义（没有真实连接），关掉以免留一个 15s 定时任务
         controller = new ChatController(sessions, mock(AiServiceClient.class), plans,
-                mock(PlanIntentService.class), MAPPER, new AiServiceProperties(), null);
+                mock(PlanIntentService.class), MAPPER, quietProperties(), heartbeatOf(null), null);
         emitter = new SseEmitter(1_000L);
+    }
+
+    private static AiServiceProperties quietProperties() {
+        AiServiceProperties props = new AiServiceProperties();
+        props.setSseHeartbeatEnabled(false);
+        return props;
+    }
+
+    private static SseHeartbeat heartbeatOf(AiServiceProperties props) {
+        return new SseHeartbeat(props == null ? quietProperties() : props);
     }
 
     @Test
@@ -66,7 +78,7 @@ class ChatPlanAbortTest {
     void sseTimeoutOutlivesAiTimeout() {
         AiServiceProperties props = new AiServiceProperties();
         ChatController c = new ChatController(sessions, mock(AiServiceClient.class), plans,
-                mock(PlanIntentService.class), MAPPER, props, null);
+                mock(PlanIntentService.class), MAPPER, props, heartbeatOf(props), null);
 
         // 计划已落库、连接却先断 → 用户看到失败，数据却在。这类「假失败」比真失败更难查
         assertTrue(c.sseTimeoutMs() > props.getPlanTimeoutMs(),
