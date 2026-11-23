@@ -29,14 +29,24 @@ check('空提示', formatProgress('', T0, T0 + 10_000), '')
 check('1 秒', formatProgress(MSG, T0, T0 + 1_000), MSG)
 check('2 秒', formatProgress(MSG, T0, T0 + 2_999), MSG)
 
-// 4. 到 3 秒开始显示
-check('3 秒', formatProgress(MSG, T0, T0 + 3_000), `${MSG} 已等待 3 秒（长行程通常需要半分钟以上）`)
+// 4. 到 3 秒开始显示，但先不给「长行程」的暗示
+check('3 秒', formatProgress(MSG, T0, T0 + 3_000), `${MSG} 已等待 3 秒`)
 
-// 5. 40 秒（真实模型常见耗时）——秒数必须跟着走，不能写死 3 秒
-check('40 秒', formatProgress(MSG, T0, T0 + 40_000), `${MSG} 已等待 40 秒（长行程通常需要半分钟以上）`)
+// 5. 40 秒（pro 模型常见耗时的下沿）——秒数必须跟着走，且开始解释「为什么还没好」
+check('40 秒', formatProgress(MSG, T0, T0 + 40_000),
+  `${MSG} 已等待 40 秒（长行程要一分多钟，先别刷新，也别重复发送）`)
 
 // 6. 向下取整，不出现 12.7 秒这种值
-check('小数秒', formatProgress(MSG, T0, T0 + 12_700), `${MSG} 已等待 12 秒（长行程通常需要半分钟以上）`)
+check('小数秒', formatProgress(MSG, T0, T0 + 12_700), `${MSG} 已等待 12 秒`)
+
+// 6.1 29 秒还是安静版，30 秒才升级提示——差 1 秒不能同一句话
+check('29 秒', formatProgress(MSG, T0, T0 + 29_000), `${MSG} 已等待 29 秒`)
+check('30 秒', formatProgress(MSG, T0, T0 + 30_000),
+  `${MSG} 已等待 30 秒（长行程要一分多钟，先别刷新，也别重复发送）`)
+
+// 6.2 超过 2 分钟要交底：说清「会自动结束」，避免用户以为要无限等
+check('120 秒', formatProgress(MSG, T0, T0 + 120_000),
+  `${MSG} 已等待 120 秒（超过 4 分钟会自动结束并告诉你原因，不用一直等）`)
 
 // 7. 时钟回拨（时间戳比开始还早）时不显示负数
 check('时钟回拨', formatProgress(MSG, T0, T0 - 5_000), MSG)

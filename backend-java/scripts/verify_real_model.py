@@ -121,6 +121,20 @@ def chat(token: str, content: str):
     return events, int((time.perf_counter() - started) * 1000), text, plan_id
 
 
+def current_model() -> str:
+    """从 AI 服务的 /v1/health 取实际生效的模型名。
+
+    这里以前写死 `deepseek-chat`，换模型后报告里的「model」字段就是错的——
+    验收数据一旦开始对不上配置，后面所有结论都要打折。宁可返回 unknown 也不猜。
+    """
+    try:
+        with urllib.request.urlopen("http://localhost:8000/v1/health", timeout=5) as resp:
+            body = json.loads(resp.read().decode())
+        return ((body.get("data") or {}).get("llm") or {}).get("model") or "unknown"
+    except Exception:
+        return "unknown"
+
+
 def detail(token: str, plan_id: str):
     _, body = call("GET", f"/plans/{plan_id}", token=token)
     return body.get("data") or {}
@@ -174,6 +188,11 @@ def main() -> int:
                 "factCount": len(facts),
                 "title": d.get("title"),
                 "destination": (d.get("basic") or {}).get("destination"),
+                # 用户没说什么，模型就得承认不知道。这两项用来判断「卡片第二行该不该显示」，
+                # 顺手也能量出模型是不是在替用户编人数（kimi 那 7 次失败就是编了 travelers=1）
+                "missingFields": (d.get("basic") or {}).get("missingFields") or [],
+                "travelers": (d.get("basic") or {}).get("travelers"),
+                "startDate": (d.get("basic") or {}).get("startDate"),
             })
             plans.append(plan_id)
         gens.append(item)
@@ -203,7 +222,7 @@ def main() -> int:
     p95 = lat[min(len(lat) - 1, int(len(lat) * 0.95))] if lat else 0
     summary = {
         "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        "model": "deepseek-chat",
+        "model": current_model(),
         "gen": {"n": len(gens), "ok": sum(1 for g in gens if g["ok"]),
                 "p50ms": p50, "p95ms": p95,
                 "unverifiedWithValue": sum(g.get("unverifiedWithValue", 0) for g in gens)},

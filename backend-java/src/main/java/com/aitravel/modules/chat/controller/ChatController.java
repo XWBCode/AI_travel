@@ -2,6 +2,7 @@ package com.aitravel.modules.chat.controller;
 
 import com.aitravel.common.api.ErrorCode;
 import com.aitravel.common.api.TraceIdHolder;
+import com.aitravel.common.config.AiServiceProperties;
 import com.aitravel.common.exception.BizException;
 import com.aitravel.common.web.CurrentUser;
 import com.aitravel.common.web.TraceIdFilter;
@@ -73,8 +74,20 @@ public class ChatController {
     private final PlanService planService;
     private final PlanIntentService planIntentService;
     private final ObjectMapper objectMapper;
+    private final AiServiceProperties aiProperties;
     @Qualifier("aiStreamExecutor")
     private final ExecutorService aiStreamExecutor;
+
+    /**
+     * SSE 连接上限 = 最长的 AI 等待 + 30s 余量。
+     * <p>
+     * 取 {@code max(plan, read)} 而不是写死：先生成计划再落库，两条路径都可能最长，
+     * 任何一个超过连接上限，用户就会看到「失败」但计划其实已经存进去了。
+     */
+    long sseTimeoutMs() {
+        long aiWait = Math.max(aiProperties.getPlanTimeoutMs(), aiProperties.getReadTimeoutMs());
+        return aiWait + 30_000L;
+    }
 
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter stream(@Valid @RequestBody SendMessageRequest req) {
@@ -92,9 +105,10 @@ public class ChatController {
             turns.add(Map.of("role", "user", "content", req.getContent()));
         }
 
-        // 真实模型生成一份计划要 30-45s，240s 兜底必须大于 AiServiceClient 的 180s 上限，
-        // 否则会出现「AI 侧还没超时、连接先被掐断」的假失败
-        SseEmitter emitter = new SseEmitter(240_000L);
+        // 连接上限必须大于**所有** AI 等待上限，否则会出现「AI 侧还在跑、连接先被掐断」的假失败：
+        // 计划已经落库，用户却什么都没看到。这个值以前是硬编码 240s，AI 超时从 180s 提到 300s
+        // 之后两者就反了——所以改成从配置推导，不再各写各的。
+        SseEmitter emitter = new SseEmitter(sseTimeoutMs());
         AtomicBoolean canceled = new AtomicBoolean(false);
 
         emitter.onTimeout(() -> {
@@ -388,8 +402,11 @@ public class ChatController {
         }
         sb.append("。\n\n");
         if (unverified > 0) {
+            // 与卡片同一口径（BUG-004）：说「处信息待核实」，不说「字段」——
+            // 「字段」是数据模型里的概念，用户要的是「这些数字我没法替你确认」
             sb.append("其中 ").append(unverified)
-                    .append(" 个字段标记为「待核实」——当前未接入实时天气/票价/路况，相关数值请以实际为准。\n\n");
+                    .append(" 处信息待核实——当前未接入实时天气/票价/路况，相关数值请以实际为准，")
+                    .append("详情页可按类别查看具体是哪几处。\n\n");
         }
         sb.append("计划已保存，点开卡片可查看每日安排；确认无误后再开始行程。");
         return sb.toString();

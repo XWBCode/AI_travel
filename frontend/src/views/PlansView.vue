@@ -8,8 +8,9 @@ import { PLAN_STATUS_TEXT, type PlanSummaryVO } from '@/api/types'
 /**
  * 我的旅行列表。
  *
- * 卡片只给「够不够判断下一步」的信息：标题、状态、目的地与天数、待核实数量。
+ * 卡片只给「够不够判断下一步」的信息：标题、状态、目的地与天数、是否还有待核实的项。
  * 真正的行程放在详情页——列表页把人留在原地比什么都看不到更糟。
+ * 「多少处待核实」属于内部计量，列表里不报数（BUG-004），只给一个可继续追问的入口。
  */
 const router = useRouter()
 
@@ -154,8 +155,12 @@ onMounted(load)
             </span>
           </div>
 
-          <div v-if="plan.unverifiedFieldCount > 0" class="unverified">
-            {{ plan.unverifiedFieldCount }} 个字段待核实
+          <div
+            v-if="plan.unverifiedFieldCount > 0"
+            class="unverified"
+            title="天气、票价与路况尚未接入实时数据；打开详情可以看具体是哪几类"
+          >
+            部分信息待核实
           </div>
           <div v-else class="verified">全部字段已核实</div>
 

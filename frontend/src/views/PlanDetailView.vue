@@ -20,6 +20,7 @@ import PlanEditDialog from '@/components/PlanEditDialog.vue'
 import PlanStartDialog from '@/components/PlanStartDialog.vue'
 import PlanTodayPanel from '@/components/PlanTodayPanel.vue'
 import { canRollback, canRollbackTo, rollbackConfirmText, rollbackSuccessText, versionLabel } from '@/utils/rollback'
+import { groupUnverified } from '@/utils/planFacts'
 import { clientDate, defaultScheduleView } from '@/utils/today'
 
 /** 跨零点检查的定时器句柄（60s 一次的轻量比较） */
@@ -77,6 +78,17 @@ const missingItems = computed(() => {
   const fields = plan.value?.basic?.missingFields ?? []
   return fields.map((f) => MISSING_TEXT[f] ?? f)
 })
+
+/**
+ * 「N 处信息待核实」的明细（BUG-004）。
+ *
+ * 详情页可以报数字——用户在这里就是要看细节的；但数字必须能被解释，
+ * 所以配一个可展开的分类清单：哪一类、多少处、举个例子。
+ * `plan.value` 为空时给空分组，模板里自然不渲染。
+ */
+const factSummary = computed(() => groupUnverified(plan.value))
+/** 明细默认收起：展开后一屏放不下，先让用户看到总数和原因 */
+const showFactDetail = ref(false)
 
 async function load(): Promise<void> {
   if (!planId.value) return
@@ -373,10 +385,28 @@ onBeforeUnmount(() => {
         </header>
 
         <div v-if="plan.unverifiedFieldCount > 0" class="notice">
-          <strong>{{ plan.unverifiedFieldCount }} 个字段待核实</strong>
+          <strong class="notice-title">共 {{ plan.unverifiedFieldCount }} 处信息待核实</strong>
           <span>
-            当前未接入实时天气、票价与路况，页面里标注「待核实」的内容请以景区公告与实际报价为准。
+            天气、票价与路况还没接入实时数据源，下面标注「待核实」的内容请以景区公告与实际报价为准。
           </span>
+          <button
+            v-if="factSummary.groups.length"
+            type="button"
+            class="notice-toggle"
+            @click="showFactDetail = !showFactDetail"
+          >
+            {{ showFactDetail ? '收起分类明细' : '按类别看是哪几处' }}
+          </button>
+          <ul v-if="showFactDetail" class="fact-list">
+            <li v-for="group in factSummary.groups" :key="group.key" class="fact-row">
+              <span class="fact-name">{{ group.label }}</span>
+              <span class="fact-count">{{ group.count }} 处</span>
+              <span class="fact-eg">
+                {{ group.subjects.join('、')
+                }}{{ group.subjectCount > group.subjects.length ? ` 等 ${group.subjectCount} 项` : '' }}
+              </span>
+            </li>
+          </ul>
         </div>
 
         <div v-if="missingItems.length" class="missing">
@@ -682,6 +712,61 @@ onBeforeUnmount(() => {
 
 .notice span {
   color: #a9761b;
+}
+
+.notice-title {
+  font-weight: 600;
+}
+
+.notice-toggle {
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: #8a6316;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.notice-toggle:hover {
+  color: var(--at-primary);
+}
+
+.fact-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 8px 0 0;
+  border-top: 1px dashed #f0dcb6;
+  list-style: none;
+}
+
+.fact-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* `.notice span` 会覆盖单类名，所以这里带上父选择器保证优先级 */
+.notice .fact-name {
+  flex: none;
+  font-weight: 600;
+  color: #8a6316;
+}
+
+.notice .fact-count {
+  flex: none;
+  color: #a9761b;
+}
+
+.notice .fact-eg {
+  flex: 1 1 140px;
+  min-width: 0;
+  font-size: 11px;
+  color: #a89564;
 }
 
 .missing {

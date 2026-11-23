@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import type { PlanDay, TravelPlan } from '@/api/types'
+import { groupUnverified, unverifiedCategoryText } from '@/utils/planFacts'
 
 const props = defineProps<{ plan: TravelPlan }>()
 
@@ -55,6 +56,12 @@ const metaParts = computed(() => {
   if (basic.startDate) parts.push(`${basic.startDate} 出发`)
   return parts
 })
+
+/**
+ * 卡片上不报「74 个字段待核实」这种内部数（BUG-004）。
+ * 用户需要知道的是「哪几类信息我不敢打包票」，数字留给详情页去解释。
+ */
+const unverifiedCategories = computed(() => unverifiedCategoryText(groupUnverified(props.plan)))
 </script>
 
 <template>
@@ -73,7 +80,9 @@ const metaParts = computed(() => {
 
     <div v-if="plan.unverifiedFieldCount > 0" class="unverified">
       <span class="dot" />
-      {{ plan.unverifiedFieldCount }} 个字段待核实：未接入实时天气、票价与路况，请以实际为准
+      <span class="unverified-text">
+        <strong class="unverified-title">部分信息待核实</strong><template v-if="unverifiedCategories">（{{ unverifiedCategories }}）</template>：天气、票价与路况尚未接入实时数据，请以实际为准
+      </span>
     </div>
 
     <ol class="days">
@@ -172,6 +181,11 @@ const metaParts = computed(() => {
   margin-top: 7px;
   border-radius: 50%;
   background: #d9a441;
+}
+
+.unverified-title {
+  margin-right: 2px;
+  font-weight: 600;
 }
 
 .days {

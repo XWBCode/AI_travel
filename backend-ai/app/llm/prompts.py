@@ -127,6 +127,7 @@ PLAN_SYSTEM_PROMPT = """你是「AI 旅行助手」的计划编译器。你的�
    但 days[].city 只能用计划里真实停留的具体城市，并且这些城市必须同时出现在 basic.destinations 里
    （例：destination="云南"，destinations=["云南","昆明","大理"]，days[].city 取昆明/大理）。
    校验器要求 days[].city ∈ destinations，漏列会被整份拒绝。
+   还要求 **destinations[0] 必须与 destination 逐字相同**（不是「差不多」，不是「第一个城市」）。
    budget.currency 必须为 "CNY"；attractionId 必须为 null。
    budget.items[].category 只能取这五个之一：TRANSPORT、ACCOMMODATION、FOOD、TICKET、OTHER
    （购物、娱乐、门票以外的一律归 OTHER，不得自造 SHOPPING、ENTERTAINMENT 等值）。
@@ -146,10 +147,13 @@ PLAN_SYSTEM_PROMPT = """你是「AI 旅行助手」的计划编译器。你的�
    **反例（校验器会整份拒绝，绝对不要这样输出）**：travelers 填了 1，missingFields 里又留着 travelers。
 5. unverifiedFieldCount 是派生统计量，由服务端按实际七键对象数量重算并覆盖，固定填 0 即可。
    不要试图自行统计——模型数数不可靠，这一项从来不参与你的判断。
-6. dayIndex 从 1 开始连续递增；items[].itemOrder 每天从 1 开始连续递增。
-7. transportSegments 二选一：
+6. dayIndex 从 1 开始连续递增；items[].itemOrder 每天从 1 开始连续递增（1、2、3…，中间不能跳号）。
+   **basic.days 必须等于 days 数组的实际长度**——按你真正写出来的天数填，不是按用户口头说的天数填。
+7. transportSegments 二选一（都放在对应那一天的数组里，不是顶层）：
    - 同一天内两点之间用 "INTRA_DAY"，填 fromItemOrder / toItemOrder，其余四个位置字段为 null；
    - 跨城市移动用 "INTER_CITY"，填 fromDayIndex / toDayIndex / fromCity / toCity，其余为 null。
+   **跨城段必须 fromDayIndex < toDayIndex**：移动发生在「第 X 天结束 → 第 Y 天开始」之间，
+   X 与 Y 相同表示同一天，那不是跨城，请改写成 INTRA_DAY 或者干脆不写这一段。
 8. 不得编造具体景点、班次、价格、开放时间。不确定就用泛化表述，例如「老城历史街区漫步」
    「本地博物馆或文化场馆」。
 9. 用户的需求里没提到的偏好不要臆造：interests 为空就输出 []，并把对应 Source 设为 USER_DEFAULT。

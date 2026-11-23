@@ -1,5 +1,6 @@
 package com.aitravel.modules.chat.controller;
 
+import com.aitravel.common.config.AiServiceProperties;
 import com.aitravel.modules.chat.entity.ChatMessage;
 import com.aitravel.modules.chat.service.AiServiceClient;
 import com.aitravel.modules.chat.service.ChatSessionService;
@@ -56,8 +57,22 @@ class ChatPlanAbortTest {
 
         // 执行器只在 stream() 里用到，这里直接调 runPlan，传 null 即可
         controller = new ChatController(sessions, mock(AiServiceClient.class), plans,
-                mock(PlanIntentService.class), MAPPER, null);
+                mock(PlanIntentService.class), MAPPER, new AiServiceProperties(), null);
         emitter = new SseEmitter(1_000L);
+    }
+
+    @Test
+    @DisplayName("SSE 上限必须大于 AI 等待上限，否则长尾会被连接超时误杀")
+    void sseTimeoutOutlivesAiTimeout() {
+        AiServiceProperties props = new AiServiceProperties();
+        ChatController c = new ChatController(sessions, mock(AiServiceClient.class), plans,
+                mock(PlanIntentService.class), MAPPER, props, null);
+
+        // 计划已落库、连接却先断 → 用户看到失败，数据却在。这类「假失败」比真失败更难查
+        assertTrue(c.sseTimeoutMs() > props.getPlanTimeoutMs(),
+                "SSE 上限必须大于计划生成上限");
+        assertTrue(c.sseTimeoutMs() > props.getReadTimeoutMs(),
+                "SSE 上限必须大于流式读超时");
     }
 
     @Test

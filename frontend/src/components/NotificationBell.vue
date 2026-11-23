@@ -120,10 +120,26 @@ onUnmounted(() => {
       <button
         type="button"
         class="bell"
+        :class="{ 'has-unread': unread > 0 }"
         :title="unread ? `${unread} 条未读` : '通知'"
         :aria-label="unread ? `通知，${unread} 条未读` : '通知'"
       >
-        <span class="icon">🔔</span>
+        <svg class="icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+          <path
+            d="M6 9a6 6 0 1 1 12 0c0 3.2.7 5 1.6 6.1.4.5.1 1.2-.5 1.2H4.9c-.6 0-.9-.7-.5-1.2C5.3 14 6 12.2 6 9Z"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.7"
+            stroke-linejoin="round"
+          />
+          <path
+            d="M9.6 19.2a2.6 2.6 0 0 0 4.8 0"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.7"
+            stroke-linecap="round"
+          />
+        </svg>
         <span v-if="badge" class="badge">{{ badge }}</span>
       </button>
     </template>
@@ -175,14 +191,26 @@ onUnmounted(() => {
   position: relative;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
   cursor: pointer;
-  font-size: 16px;
-  line-height: 1;
-  padding: 4px;
+  /* emoji 换成内联 SVG 后颜色可控：与顶栏「服务正常」胶囊同一灰阶（BUG-005） */
+  color: #5b6572;
+  padding: 0;
   border: none;
   border-radius: 8px;
   background: transparent;
-  transition: background 0.15s;
+  transition: background 0.15s, color 0.15s;
+}
+
+/* 有未读时压深一档，避免只靠红点才被注意到 */
+.bell.has-unread {
+  color: var(--at-primary);
+}
+
+.icon {
+  display: block;
 }
 
 .bell:focus-visible {
@@ -192,6 +220,7 @@ onUnmounted(() => {
 
 .bell:hover {
   background: #f5f7fa;
+  color: var(--at-primary);
 }
 
 .badge {
