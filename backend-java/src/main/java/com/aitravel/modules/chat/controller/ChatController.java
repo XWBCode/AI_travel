@@ -272,10 +272,11 @@ public class ChatController {
      * 复用 {@link PlanService#generate}：它已经是「生成→校验→事务落库→留痕」的完整单元，
      * 本方法只负责转发事件和落一条聊天消息。在这里重写校验等于让两套规则漂移。
      */
-    private void runPlan(SseEmitter emitter, Long sessionId, Long userMessageId, Long userId,
-                         List<Map<String, String>> turns, String traceId,
-                         PlanIntentService.PlanIntent intent, AtomicBoolean canceled) {
+    void runPlan(SseEmitter emitter, Long sessionId, Long userMessageId, Long userId,
+                 List<Map<String, String>> turns, String traceId,
+                 PlanIntentService.PlanIntent intent, AtomicBoolean canceled) {
         long startAt = System.currentTimeMillis();
+        AtomicBoolean settled = new AtomicBoolean(false);
 
         Map<String, Object> event = new LinkedHashMap<>();
         event.put("scene", "plan");
@@ -290,7 +291,19 @@ public class ChatController {
 
         try {
             JsonNode plan = planService.generate(userId, turns, sessionId, userMessageId);
+            // 摘要提前算：无论后面走「正常下发」还是「断连补记」都要用它
+            String summary = summarizePlan(plan);
+
             if (canceled.get()) {
+                // 计划已经落库了。此时什么都不写，用户刷新后只会看到自己的提问、
+                // 回答凭空消失，而「我的旅行」里却多出一份计划——这是数据不一致，
+                // 比少一次流式动画严重得多。所以按 CANCELED 落一条，并说明计划已保存。
+                long latency = System.currentTimeMillis() - startAt;
+                chatSessionService.saveAssistantMessage(sessionId, userId, summary, "plan-assistant",
+                        latency, "CANCELED", "连接中断，计划已生成并保存");
+                settled.set(true);
+                log.info("计划已生成但客户端断开，按 CANCELED 落库 sessionId={} planId={}",
+                        sessionId, plan.path("planId").asText());
                 return;
             }
 
@@ -303,12 +316,12 @@ public class ChatController {
 
             // 摘要同时下发：卡片是结构化数据，但用户第一眼需要一句人话，
             // 且刷新后卡片不在、这句话还在（它已随消息落库）
-            String summary = summarizePlan(plan);
             sendSafe(emitter, "delta", Map.of("content", summary));
 
             long latency = System.currentTimeMillis() - startAt;
             ChatMessage message = chatSessionService.saveAssistantMessage(
                     sessionId, userId, summary, "plan-assistant", latency, "SUCCESS", null);
+            settled.set(true);
 
             Map<String, Object> done = new LinkedHashMap<>();
             done.put("messageId", message.getId());
@@ -317,6 +330,7 @@ public class ChatController {
             sendSafe(emitter, "done", done);
             emitter.complete();
         } catch (BizException e) {
+            settled.set(true);
             // 校验不过 / 信息不足：业务表已保证 0 条（AC-07），这里只负责把原因说清楚
             long latency = System.currentTimeMillis() - startAt;
             String message = e.getMessage() == null ? "计划生成失败" : e.getMessage();
@@ -331,6 +345,17 @@ public class ChatController {
                     sessionId, userId, "", "plan-assistant", latency, "FAILED", message);
             completeWithError(emitter, ErrorCode.AI_SERVICE_UNAVAILABLE.getCode(), message);
             log.warn("计划生成被拒 sessionId={} reason={} msg={}", sessionId, reason, message);
+        } catch (Exception e) {
+            // 未预料的异常（落库之后的空指针、序列化失败……）同样要结账：
+            // 这一轮已经消费了用户的提问，不能连一条记录都不留
+            if (!settled.get()) {
+                settled.set(true);
+                long latency = System.currentTimeMillis() - startAt;
+                chatSessionService.saveAssistantMessage(sessionId, userId, "", "plan-assistant",
+                        latency, "FAILED", "计划生成异常，请稍后重试");
+            }
+            log.error("计划生成异常 sessionId={}", sessionId, e);
+            completeWithError(emitter, ErrorCode.INTERNAL_ERROR.getCode(), "计划生成异常，请稍后重试");
         }
     }
 

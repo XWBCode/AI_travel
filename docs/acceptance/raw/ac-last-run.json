@@ -1,0 +1,14 @@
+{
+  "baseline": "main@2e27428",
+  "at": "2026-11-23T16:22:46",
+  "results": [
+    {
+      "ac": "AC-04",
+      "title": "生成中断完整性",
+      "status": "PASS",
+      "metric": "用户消息落库 1 条，助手消息 ['CANCELED']",
+      "detail": "读到 ['meta'] 后断开；无「SUCCESS 且内容为空」的假成功：True；是否真的抓到中断窗口：True",
+      "note": ""
+    }
+  ]
+}
