@@ -1,13 +1,125 @@
 {
   "baseline": "main@2e27428",
-  "at": "2026-11-23T16:28:27",
+  "at": "2026-11-23T16:31:26",
   "results": [
+    {
+      "ac": "AC-01",
+      "title": "历史消息持久化",
+      "status": "PASS",
+      "metric": "恢复率 100%，消息 6 条",
+      "detail": "3 轮消息 ID/角色/内容两次读取完全一致：True；条数 6",
+      "note": ""
+    },
+    {
+      "ac": "AC-02",
+      "title": "会话隔离",
+      "status": "PASS",
+      "metric": "越权拒绝率 100%（20/20）",
+      "detail": "B 读 A 的 sessionId 20 次全部 403；A 自己读 200",
+      "note": ""
+    },
+    {
+      "ac": "AC-03",
+      "title": "流式首字延迟（mock）",
+      "status": "PASS",
+      "metric": "P50 30ms / P95 38ms（n=30）",
+      "detail": "meta→首个 delta；真实模型未验证（key 失效，见 AC-15/LLM 报告）",
+      "note": "指标为 mock 模式 ≤500ms；真实模型 P95 待 D-07 另定"
+    },
+    {
+      "ac": "AC-04",
+      "title": "生成中断完整性",
+      "status": "PASS",
+      "metric": "用户消息落库 1 条，助手消息 ['CANCELED']",
+      "detail": "读到 ['meta'] 后断开；无「SUCCESS 且内容为空」的假成功：True；是否真的抓到中断窗口：True",
+      "note": ""
+    },
     {
       "ac": "AC-05",
       "title": "需求字段识别（目的地/天数）",
       "status": "PASS",
       "metric": "准确率 100%（20/20）",
       "detail": "全部命中",
+      "note": ""
+    },
+    {
+      "ac": "AC-06",
+      "title": "缺失字段处理",
+      "status": "PASS",
+      "metric": "未编造 3/3 个字段，missingFields 声明 3 个",
+      "detail": "实际值为空的字段：[]；missingFields=['startDate', 'endDate', 'originCity', 'travelers', 'budget', 'interests', 'transport', 'accommodation']",
+      "note": ""
+    },
+    {
+      "ac": "AC-07",
+      "title": "计划 Schema 校验",
+      "status": "PARTIAL",
+      "metric": "畸形样例 10 组（目标 50 组）",
+      "detail": "执行证据在 backend-ai/tests/test_plan.py 与 PlanSchemaValidatorTest；「注入 50 组」的样本量未达 02 §6 目标，故记 PARTIAL 而非 PASS",
+      "note": ""
+    },
+    {
+      "ac": "AC-08",
+      "title": "实时字段不编造",
+      "status": "PASS",
+      "metric": "违规 0 处 / FactField 124 个",
+      "detail": "扫描 3 份生成计划的全部 FactField：verified=false 时 value 必须为空",
+      "note": ""
+    },
+    {
+      "ac": "AC-09",
+      "title": "确认状态机",
+      "status": "PASS",
+      "metric": "非法操作后状态仍为 DRAFT",
+      "detail": "生成后依次尝试 start/complete/progress/today，状态未被任何操作自动推进",
+      "note": ""
+    },
+    {
+      "ac": "AC-10",
+      "title": "结构化存储",
+      "status": "PASS",
+      "metric": "3 天 / 9 个行程项，字段自洽 True",
+      "detail": "详情完全由结构化字段还原（标题/时间/备注），渲染与 aiNote 无关",
+      "note": ""
+    },
+    {
+      "ac": "AC-11",
+      "title": "调整需确认（AI 不直接写正式计划）",
+      "status": "PASS",
+      "metric": "建议生成后 version 2 → 2，内容不变：True",
+      "detail": "生成的只是 PENDING 建议；正式计划只有 confirm 之后才变（详见 verify_plan_adjustment.py）",
+      "note": ""
+    },
+    {
+      "ac": "AC-12",
+      "title": "越权防护（计划/进度/版本）",
+      "status": "PASS",
+      "metric": "403 率 100%（6/6 类资源）",
+      "detail": "六类越权全部 403",
+      "note": "通知侧越权见 verify_notification.py（20003）"
+    },
+    {
+      "ac": "AC-13",
+      "title": "幂等性 / 并发安全（完成旅行 50 并发）",
+      "status": "PASS",
+      "metric": "成功 1/50，状态 COMPLETED，「旅行已结束」通知 1 条",
+      "detail": "错误码分布：{0: 1, 30103: 45, 30104: 4}",
+      "note": ""
+    },
+    {
+      "ac": "AC-14",
+      "title": "异常可见（外部源降级）",
+      "status": "BLOCKED",
+      "metric": "未执行",
+      "detail": "需要停掉 8000 端口或注入 5xx 才能测；验收阶段不改运行环境。已有代码证据：AiServiceClient 把网关异常映射为 50201，前端 stream-error.ts 有对应文案（15 项断言）",
+      "note": "方法：停 Python 服务后在聊天页发消息，观察是否出现可读的降级提示"
+    },
+    {
+      "ac": "AC-15",
+      "title": "来源标注（L1 天气）",
+      "status": "NA",
+      "metric": "不适用",
+      "detail": "L0 阶段没有实时天气数据源，本项依赖 M3（D-03/D-04 未定）；FactField 的 source/fetchedAt 结构已在契约中就位，但无数据可验",
       "note": ""
     }
   ]
