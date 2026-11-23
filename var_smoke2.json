@@ -1,1 +1,0 @@
-{"code":10002,"message":"生成结果格式不正确，请重试","data":{"intent":{"scene":"plan","needPlan":true,"missingFields":["startDate","endDate","originCity","budget","transport","accommodation"]},"draft":null,"rejected":{"reason":"INVALID_FORMAT","errors":["JSON 解析失败: Expecting ',' delimiter（位置 12911）"],"traceId":""},"skipped":null,"missingFields":null,"done":{}},"traceId":""}
