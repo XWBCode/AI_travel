@@ -16,6 +16,10 @@ public class AiServiceProperties {
 
     private int connectTimeoutMs = 5000;
 
-    /** AI 流式响应可能较慢，读超时需要给足，但不能无限 */
-    private int readTimeoutMs = 180000;
+    /**
+     * AI 流式响应可能较慢，读超时需要给足，但不能无限。
+     * 实测：DeepSeek 直连 3 天计划约 14s；交融网关的 v4-pro / v4-flash 约 85–100s，
+     * 且天上界随天数线性上升。180s 对 7 天以上的行程不够，默认放到 300s，可用环境变量覆盖。
+     */
+    private int readTimeoutMs = 300000;
 }

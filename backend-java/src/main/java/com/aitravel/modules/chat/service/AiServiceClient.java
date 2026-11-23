@@ -44,9 +44,12 @@ public class AiServiceClient {
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final String baseUrl;
+    /** 单次流式读取的总时长上限，与 app.ai.read-timeout-ms 一致 */
+    private final Duration readTimeout;
 
     public AiServiceClient(com.aitravel.common.config.AiServiceProperties props) {
         this.baseUrl = props.getBaseUrl();
+        this.readTimeout = Duration.ofMillis(props.getReadTimeoutMs());
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(props.getConnectTimeoutMs()))
                 // SSE 走 HTTP/1.1：明文 HTTP/2 升级（h2c）对 uvicorn 无意义，只会让对端收到畸形请求
@@ -91,7 +94,7 @@ public class AiServiceClient {
                 .header("Content-Type", "application/json")
                 .header("Accept", "text/event-stream")
                 .header("X-Trace-Id", traceId == null ? "" : traceId)
-                .timeout(Duration.ofMinutes(3))
+                .timeout(readTimeout)
                 .POST(HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8))
                 .build();
 

@@ -25,6 +25,7 @@ app:
     allowed-origins: ${CORS_ORIGINS}
   ai:
     base-url: ${AI_SERVICE_URL}
+    read-timeout-ms: ${AI_READ_TIMEOUT_MS:300000}
 
 logging:
   level:

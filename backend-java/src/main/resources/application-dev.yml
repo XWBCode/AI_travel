@@ -31,6 +31,8 @@ app:
     allowed-origins: ${CORS_ORIGINS:http://localhost:5173}
   ai:
     base-url: ${AI_SERVICE_URL:http://localhost:8000}
+    # 交融网关单份计划 85–100s，7 天以上更久；给足读超时，别让用户在最后一秒被掐断
+    read-timeout-ms: ${AI_READ_TIMEOUT_MS:300000}
 
 logging:
   level:
