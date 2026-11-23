@@ -1,5 +1,10 @@
 # M3-1 天气展示 · 验收报告
 
+> ⚠️ **本报告的适用范围已收窄**：数据源随后由 D-03 切换为和风天气，预报窗口 16 → 10 天、
+> 缓存 30 → 60 分钟。本文证据仍然成立的部分是**降级行为、日期口径、越权、展示**；
+> 涉及"Open-Meteo 上游 / 16 天窗口 / 生产不可用"的结论请看
+> `docs/acceptance/D-03-QWeather-接入报告.md`（其中明确标注了和风天气真实链路仍为 BLOCKED）。
+
 > 提交范围：`feat(weather): Python 天气工具层与端点` + `feat(weather): Java 编排+缓存+降级 与前端天气条`
 > 上位文档：`docs/design/09-M3-1-天气接入设计.md`（PM 已批准，日期口径 C）
 > 环境：本机 dev，`WEATHER_PROVIDER=open-meteo`（两端口径一致）；真实模型 `deepseek-v4-pro` 网关；真实上游 Open-Meteo
