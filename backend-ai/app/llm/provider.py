@@ -130,9 +130,14 @@ class OpenAICompatibleProvider(LLMProvider):
         self._temperature = temperature
         # 部分自建/代理服务不认 response_format，会直接 400；可用 LLM_JSON_MODE=false 关掉
         self._json_mode_supported = json_mode
+        # 上一次流式调用结束时的 finish_reason（stop / length / content_filter ...）。
+        # 单独留一个属性是因为 async generator 无法把"结束原因"作为返回值带出来，
+        # 而 length 正是 BUG-009 的判别依据：内容是模型编坏了，还是我们给的上限太小。
+        self.last_finish_reason: str | None = None
 
     async def stream_chat(self, messages: list[ChatMessage], trace_id: str = "",
                           json_mode: bool = False) -> AsyncGenerator[str, None]:
+        self.last_finish_reason = None
         payload = {
             "model": self._model,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
@@ -186,6 +191,11 @@ class OpenAICompatibleProvider(LLMProvider):
                         piece = delta.get("content")
                         if piece:
                             yield piece
+                        # finish_reason 只在最后一块出现；有的网关放在 choices[0].finish_reason，
+                        # 也有的放在顶层，两处都取，取到即记
+                        reason = choices[0].get("finish_reason") or chunk.get("finish_reason")
+                        if reason:
+                            self.last_finish_reason = str(reason)
         except httpx.TimeoutException as e:
             raise LLMError("模型服务响应超时") from e
         except httpx.HTTPError as e:

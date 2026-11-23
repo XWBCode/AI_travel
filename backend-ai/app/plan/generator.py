@@ -33,14 +33,21 @@ REASON_TRUNCATED = "TRUNCATED"
 _FENCE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$")
 
 
-def extract_json(text: str) -> tuple[dict[str, Any] | None, str, str]:
+def extract_json(text: str, finish_reason: str | None = None) -> tuple[dict[str, Any] | None, str, str]:
     """从模型输出里提取 JSON 对象。
 
     返回 (plan, error, reason)。真实模型经常把 JSON 包在代码块里，
     或加一句"以下是您的行程"，所以先剥围栏、再退化到首尾花括号截取。
+
+    finish_reason 是上游给的结束原因。它比"数花括号"更可靠：
+    `length` 说明是我们把 max_tokens 给少了（可调），其余才是模型自己写崩（不可调）。
+    区分这两者，用户才知道该"重试"还是该"把行程说短一点"。
     """
+    truncated_by_limit = finish_reason == "length"
+
     if not text or not text.strip():
-        return None, "模型返回空内容", REASON_INVALID_FORMAT
+        reason = REASON_TRUNCATED if truncated_by_limit else REASON_INVALID_FORMAT
+        return None, "模型返回空内容", reason
 
     cleaned = _FENCE.sub("", text.strip())
     try:
@@ -55,28 +62,39 @@ def extract_json(text: str) -> tuple[dict[str, Any] | None, str, str]:
     if start < 0:
         return None, "输出中未找到 JSON 对象", REASON_INVALID_FORMAT
     if end <= start:
-        return None, "JSON 未闭合（可能被截断）", REASON_TRUNCATED
+        detail = "JSON 未闭合（可能被截断）"
+        if finish_reason:
+            detail += f"；输出 {len(text)} 字符，finish_reason={finish_reason}"
+        return None, detail, REASON_TRUNCATED
 
     fragment = cleaned[start:end + 1]
     try:
         parsed = json.loads(fragment)
     except json.JSONDecodeError as e:
         # 末尾缺花括号最常见的成因就是输出被 max_tokens 截断
-        reason = REASON_TRUNCATED if not fragment.rstrip().endswith("}") else REASON_INVALID_FORMAT
-        return None, f"JSON 解析失败: {e.msg}（位置 {e.pos}）", reason
+        reason = REASON_TRUNCATED if truncated_by_limit or not fragment.rstrip().endswith("}") \
+            else REASON_INVALID_FORMAT
+        detail = f"JSON 解析失败: {e.msg}（位置 {e.pos}）"
+        if reason == REASON_TRUNCATED:
+            detail += f"；输出 {len(text)} 字符，finish_reason={finish_reason or '未知'}"
+        return None, detail, reason
 
     if not isinstance(parsed, dict):
         return None, "顶层不是 JSON 对象", REASON_INVALID_FORMAT
     return parsed, "", ""
 
 
-async def _collect(provider: LLMProvider, history: list[dict[str, str]], trace_id: str) -> str:
-    """把流式输出拼成完整文本。计划场景必须拿到完整 JSON 才能校验。"""
+async def _collect(provider: LLMProvider, history: list[dict[str, str]],
+                   trace_id: str) -> tuple[str, str | None]:
+    """把流式输出拼成完整文本。计划场景必须拿到完整 JSON 才能校验。
+
+    同时带回 finish_reason：截断与"模型写崩"是两种病，只有上游能告诉我们哪一种。
+    """
     messages = [ChatMessage(role=m["role"], content=m["content"]) for m in build_plan_messages(history)]
     chunks: list[str] = []
     async for piece in provider.stream_chat(messages, trace_id=trace_id, json_mode=True):
         chunks.append(piece)
-    return "".join(chunks)
+    return "".join(chunks), getattr(provider, "last_finish_reason", None)
 
 
 async def run_generation(
@@ -129,18 +147,25 @@ async def run_generation(
         return
 
     try:
-        raw = await _collect(provider, history, trace_id)
+        raw, finish_reason = await _collect(provider, history, trace_id)
     except LLMError as e:
         logger.error("plan llm failed trace=%s err=%s", trace_id, e)
         yield "error", {"code": 50201, "message": str(e)}
         return
 
-    plan, parse_error, reason = extract_json(raw)
+    plan, parse_error, reason = extract_json(raw, finish_reason)
     if plan is None:
-        logger.warning("plan parse failed trace=%s reason=%s err=%s raw_head=%s",
-                       trace_id, reason, parse_error, raw[:200])
-        yield "plan_rejected", {"reason": reason, "errors": [parse_error], "traceId": trace_id}
-        yield "error", {"code": 10002, "message": "生成结果格式不正确，请重试"}
+        logger.warning("plan parse failed trace=%s reason=%s finish=%s chars=%d err=%s raw_head=%s",
+                       trace_id, reason, finish_reason, len(raw), parse_error, raw[:200])
+        rejected = {"reason": reason, "errors": [parse_error], "traceId": trace_id}
+        if finish_reason:
+            rejected["finishReason"] = finish_reason
+        yield "plan_rejected", rejected
+        # 截断是「我们的上限不够」，不是「模型不会写」：提示要能指导用户下一步，
+        # 但绝不在服务端偷偷重试——重试一次就是再烧一次额度，且掩盖真实失败率。
+        message = "行程太长，输出被截断，请把天数说少一点或分批规划" if reason == REASON_TRUNCATED \
+            else "生成结果格式不正确，请重试"
+        yield "error", {"code": 10002, "message": message}
         return
 
     # unverifiedFieldCount 是派生统计量：数的是"整份 JSON 里有几个待核实事实字段"。

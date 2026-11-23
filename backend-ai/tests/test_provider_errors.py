@@ -41,3 +41,42 @@ def test_falls_back_to_raw_text_for_non_json():
 
 def test_plain_string_with_key_is_also_masked():
     assert "sk-8TBM" not in _describe_gateway_error("auth failed: sk-8TBMZE5bSWsB9YCXzOaWTRYgBJnxdz6a")
+
+
+def test_captures_finish_reason_from_sse(monkeypatch):
+    """finish_reason 必须从流里捞出来。
+
+    没有它，截断和"模型写崩"只能靠数花括号猜；有了它，才知道该调 max_tokens
+    还是该让用户重试。这是 BUG-009 的判别依据。
+    """
+    import asyncio
+
+    import httpx
+
+    from app.llm.provider import ChatMessage, OpenAICompatibleProvider
+
+    body = (
+        'data: {"choices":[{"delta":{"content":"{\\"a\\": 1"}}]}\n\n'
+        'data: {"choices":[{"delta":{},"finish_reason":"length"}]}\n\n'
+        "data: [DONE]\n\n"
+    ).encode()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, headers={"content-type": "text/event-stream"}, content=body)
+
+    real_client = httpx.AsyncClient
+
+    def fake_client(**kwargs):
+        kwargs.pop("timeout", None)
+        return real_client(transport=httpx.MockTransport(handler), timeout=5)
+
+    monkeypatch.setattr(httpx, "AsyncClient", fake_client)
+
+    provider = OpenAICompatibleProvider("http://stub/v1", "stub-model", "sk-stub", 30, 100, 0.2)
+
+    async def run() -> str:
+        return "".join([p async for p in provider.stream_chat([ChatMessage("user", "hi")], json_mode=True)])
+
+    text = asyncio.run(run())
+    assert text == '{"a": 1'
+    assert provider.last_finish_reason == "length"

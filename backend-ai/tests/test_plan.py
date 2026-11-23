@@ -297,8 +297,9 @@ class _ReplayProvider:
 
     name = "replay"
 
-    def __init__(self, text: str) -> None:
+    def __init__(self, text: str, finish_reason: str | None = None) -> None:
         self._text = text
+        self.last_finish_reason = finish_reason
 
     async def stream_chat(self, messages, trace_id: str = "", json_mode: bool = False):
         for i in range(0, len(self._text), 200):
@@ -354,3 +355,51 @@ def test_real_path_still_rejects_genuinely_invalid_plan():
     assert "plan_rejected" in names
     rejected = next(d for n, d in events if n == "plan_rejected")
     assert rejected["reason"] == "SCHEMA_VIOLATION"
+
+
+# ---------------- BUG-009：截断与"模型写崩"必须分开归因 ----------------
+
+def test_extract_json_prefers_finish_reason_length():
+    """finish_reason=length 时，哪怕看起来像普通语法错，也必须判成 TRUNCATED。
+
+    两者对用户的含义完全不同：TRUNCATED 是"我们的 max_tokens 不够，你把行程说短点"，
+    INVALID_FORMAT 是"模型这次没写好，重试"。混在一起，用户只会一直点重试。
+    """
+    plan, err, reason = extract_json('{"days": [{"dayIndex": 1', "length")
+    assert plan is None
+    assert reason == "TRUNCATED"
+    assert "finish_reason=length" in err
+
+
+def test_extract_json_balanced_but_illegal_is_format_error():
+    """括号闭合、只是内容非法 → INVALID_FORMAT，不能赖到上限头上。"""
+    plan, err, reason = extract_json('{"a": 1,,}', "stop")
+    assert plan is None
+    assert reason == "INVALID_FORMAT"
+
+
+def test_truncated_stream_reports_truncated_without_retry():
+    """截断时只发 plan_rejected + error，不发第二次生成——重试会再烧一次额度并掩盖真实失败率。"""
+    intent = analyze("帮我规划成都三天，2个人")
+    half = json.dumps(build_plan(intent), ensure_ascii=False)[:1200]
+
+    events = _run(_ReplayProvider(half, finish_reason="length"), intent)
+    names = [n for n, _ in events]
+
+    assert "plan_draft" not in names
+    assert names.count("error") == 1
+    rejected = next(d for n, d in events if n == "plan_rejected")
+    assert rejected["reason"] == "TRUNCATED"
+    assert rejected["finishReason"] == "length"
+    error = next(d for n, d in events if n == "error")
+    assert "截断" in error["message"]
+
+
+def test_broken_json_with_stop_reports_format_error():
+    intent = analyze("帮我规划成都三天，2个人")
+    events = _run(_ReplayProvider('{"title": "成都", "days": [,]}', finish_reason="stop"), intent)
+    rejected = next(d for n, d in events if n == "plan_rejected")
+    assert rejected["reason"] == "INVALID_FORMAT"
+    # finish_reason=stop 说明是模型自己写崩的，不是被上限截断；这个值要如实透出，
+    # 但绝不改写成 TRUNCATED——否则又回到"两种病一个药方"
+    assert rejected["finishReason"] == "stop"
