@@ -24,6 +24,15 @@ logger = logging.getLogger("ai-travel")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 环境与数据源必须在启动日志里可见：数据源合规闸门是按 env 判定的，
+    # 如果日志里看不到判定依据，"为什么这台机器起不来"就得靠猜。
+    logger.info(
+        "运行环境: %s%s",
+        settings.env or "未声明（APP_ENV 与 SPRING_PROFILES_ACTIVE 均为空）",
+        "" if settings.weather.enabled else "，天气数据源未启用",
+    )
+    if settings.weather.enabled:
+        logger.info("天气数据源: %s", settings.weather.provider)
     # 启动时构建 Provider，配置错误直接启动失败，而不是等第一个用户请求才报错
     app.state.provider = build_provider(settings.llm)
     logger.info("LLM Provider 已就绪: %s", app.state.provider.describe())

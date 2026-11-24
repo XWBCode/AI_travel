@@ -10,6 +10,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from app.tools import weather_policy
+
 
 def _load_yaml(path: Path) -> dict[str, Any]:
     """极简加载：只支持本项目用到的两层结构，避免为一个配置文件引入 pyyaml 依赖。"""
@@ -96,6 +98,10 @@ class Settings:
     version: str = "0.1.0"
     host: str = "0.0.0.0"
     port: int = 8000
+    # 运行环境：dev | test | prod（由 APP_ENV 显式声明）。
+    # 默认空串而不是 dev：空串代表「没人声明过」，用于让数据源合规闸门 fail-closed。
+    # 具体判定见 app/tools/weather_policy.py。
+    env: str = ""
     llm: LLMSettings = field(default_factory=LLMSettings)
     weather: WeatherSettings = field(default_factory=WeatherSettings)
 
@@ -149,11 +155,27 @@ class Settings:
             qweather_private_key_pem=str(_env("QWEATHER_PRIVATE_KEY_PEM", "") or ""),
         )
 
+        # 环境标识。只从环境变量读，**不**给 yaml 默认值：config.yaml 随产物进生产，
+        # 在那里写 env: dev 会让合规闸门在生产上静默失效。
+        #
+        # 回退到 SPRING_PROFILES_ACTIVE 是刻意的：本项目「当前是哪个环境」的唯一正式旋钮
+        # 是 06 规范里那一个（Java 侧用），如果再要求部署方额外记得设 APP_ENV，
+        # 迟早出现「Java 认为自己是 prod、Python 认为自己是 dev」的分叉——
+        # 两边闸门判定不一致，比只有一道闸门更危险。
+        # 两者都设时 APP_ENV 优先；一个都没设 → 空串 → 按未声明处理（fail-closed）。
+        env = str(_env("APP_ENV", _env("SPRING_PROFILES_ACTIVE", ""))).strip()
+
+        # 数据源合规闸门：违反使用条款的配置必须让进程起不来。
+        # 放在 load() 里而不是 lifespan 里，是为了让错误出现在「导入配置」这一步——
+        # 越早失败，越不可能出现「服务已启动、只是天气不对」这种半可用状态。
+        weather_policy.assert_provider_allowed(env, weather.provider)
+
         return cls(
             app_name=str(app_raw.get("name", "ai-travel-ai-service")),
             version=str(app_raw.get("version", "0.1.0")),
             host=str(_env("AI_SERVICE_HOST", server.get("host", "0.0.0.0"))),
             port=int(_env("AI_SERVICE_PORT", server.get("port", 8000))),
+            env=env,
             llm=llm,
             weather=weather,
         )
