@@ -558,6 +558,27 @@ class AdjustWindow:
 - `scripts/verify_adjust_weather_matrix.py`（12 场景）、`scripts/measure_adjust_latency.py`（A/B/C 三组，每组预热 2 次）。
 - 回填本文档 §12、`03 §4.1` 补"调整期使用外部数据"一行、`00` 索引、`docs/acceptance/M3-3-*.md`。
 
+#### S4 的 12 个场景（逐条对应 AC）
+
+每场都必须断言三件事：**① `code=0` 且 `ops` 通过 `validate_ops`（任何天气故障都不能让调整失败）；② 上游调用次数符合预期；③ 响应键集合不变**。每场前后 `weather_circuit.reset_all()`。
+
+| # | 场景 | 期望 reason | 上游调用 | 关键断言 |
+|---|---|---|---|---|
+| 1 | 开关关闭（默认） | `INJECT_DISABLED` | 0 | messages 与改造前 `==` 全等 |
+| 2 | 数据源未启用 | `PROVIDER_DISABLED` | 0 | 同上 |
+| 3 | 计划日期全缺（`date` 全 null 且 `startDate` null） | `NO_START_DATE` | 0 | 不兜底成今天 |
+| 4 | 行程全在 10 天外（`startDate=今天+20`） | `DATE_OUT_OF_RANGE` | 0 | — |
+| 5 | 行程全已过去（`startDate=今天-10`，共 3 天） | `DATE_OUT_OF_RANGE` | 0 | — |
+| 6 | **行程跨今天**（`startDate=今天-2`，共 5 天） | 注入 | 1–3 | 只查今天起的天；AC-A6 |
+| 7 | 城市无坐标（`CITY_UNKNOWN`） | `NO_CITY`/逐城 `CITY_UNKNOWN` | **0** | 坐标未知不得出网 |
+| 8 | 全部城市查询成功 | 注入 | 城市数 | 每城只绑自己的日期 |
+| 9 | 部分城市失败（成都 ok / 乐山 500） | 注入（部分） | 城市数 | 乐山进 `uncovered`，不写进成都行；AC-A7 |
+| 10 | 全部城市失败（500） | `NO_DATA` + `detail=…:UPSTREAM_ERROR` | 城市数 | 块不注入，仍出建议 |
+| 11 | 一慢多快（乐山 5s / 成都正常，预算 600ms） | 注入（部分） | 城市数 | 整请求 ≈ 预算 + 模型耗时；被取消城市进 `uncovered` |
+| 12 | 连续两次相同请求（缓存命中 / 过期） | 注入 | 第二次 0 | 第二次 `weather_ms ≤ 5`；AC-A9 |
+
+第 11 场是唯一能同时验证"超时用已完成的部分"和"被取消的城市不能沉默"的一场——这两条正是 M3-2 用一整轮才修对的语义，M3-3 复用同一份实现（D-A5）就是为了不重犯。
+
 ### 10.3 唯一一处对已关闭代码的改动（需 D-A5 批准）
 
 `app/tools/weather_inject.py` 末尾增加三个薄封装（**只改可见性，零逻辑变更**）：
