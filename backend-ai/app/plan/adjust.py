@@ -14,11 +14,13 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from typing import Any
 
 from app.llm.prompts import build_adjust_messages
 from app.llm.provider import ChatMessage, LLMError, LLMProvider
 from app.plan.generator import extract_json
+from app.tools import weather_adjust
 
 logger = logging.getLogger("ai-travel.adjust")
 
@@ -44,6 +46,10 @@ def _text(node: Any) -> str | None:
         return None
     value = str(node).strip()
     return value or None
+
+
+def _ms(started: float) -> int:
+    return int((time.perf_counter() - started) * 1000)
 
 
 def _index_days(plan_view: dict) -> dict[int, set[str]]:
@@ -201,8 +207,12 @@ async def run_adjust(provider: LLMProvider, plan_view: dict, instruction: str,
         logger.info("adjust(mock) trace=%s ops=%d", trace_id, len(result["ops"]))
         return {**result, "mock": True}
 
+    # 放在 mock 分支之后：mock 不读配置、不查天气，单测天然零出网（与生成链路同一取舍）
+    weather = await weather_adjust.prepare_adjust_weather_block(plan_view, trace_id=trace_id)
+
     messages = [ChatMessage(role=m["role"], content=m["content"])
-                for m in build_adjust_messages(plan_view, instruction)]
+                for m in build_adjust_messages(plan_view, instruction, weather.block)]
+    started = time.perf_counter()
     chunks: list[str] = []
     try:
         async for piece in provider.stream_chat(messages, trace_id=trace_id, json_mode=True):
@@ -225,4 +235,10 @@ async def run_adjust(provider: LLMProvider, plan_view: dict, instruction: str,
         raise AdjustError("建议内容不合法：" + problems[0])
 
     logger.info("adjust(real) trace=%s ops=%d", trace_id, len(ops or []))
+    # 分段耗时：调整链路没有 SSE，用户等待 = 天气 + 模型，两个数都要能看到
+    model_ms = _ms(started)
+    logger.info(
+        "adjust_done trace=%s injected=%s weatherMs=%d modelMs=%d totalMs=%d",
+        trace_id, weather.injected, weather.elapsed_ms, model_ms, weather.elapsed_ms + model_ms,
+    )
     return {"summary": summary[:100], "ops": ops or [], "mock": False}

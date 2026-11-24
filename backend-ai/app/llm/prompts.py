@@ -231,16 +231,29 @@ ADJUST_SYSTEM_PROMPT = """你是「AI 旅行助手」的计划修改器。你的
 """
 
 
-def build_adjust_messages(plan_view: dict, instruction: str) -> list[dict]:
+def build_adjust_messages(plan_view: dict, instruction: str,
+                          weather_block: str | None = None) -> list[dict]:
     """调整场景的消息组装：计划视图与用户原话分段给出，避免模型把两者混读。
 
     不做字符串拼接式的指令包装（总纲 8.1）：用户原话单独成段，且即使模型被
     「忽略以上规则」这类话术带偏，输出仍要过 Java 侧校验，最坏结果只是这条建议无效。
+
+    `weather_block`（M3-3）放在**最前面**，三条理由：
+
+    1. 顺序上是"环境 → 对象 → 指令"，与生成链路一致；
+    2. 不能夹在【当前计划】与【用户要求】之间——那两段的相邻性正是规则 1
+       （itemId 必须照抄）能生效的原因，切断它得不偿失；
+    3. 它必须与用户原话保持距离，否则模型会把它当成用户说的话（总纲 8.1）。
+
+    为 None 时**不产生任何多余字符**：`build_adjust_messages(view, text)` 与
+    `build_adjust_messages(view, text, None)` 的输出逐字相同，这是 S2 的验收条件。
     """
     import json
 
+    head = f"{weather_block.strip()}\n\n" if weather_block else ""
     content = (
-        "【当前计划】\n"
+        head
+        + "【当前计划】\n"
         + json.dumps(plan_view, ensure_ascii=False, indent=2)
         + "\n\n【用户要求】\n"
         + instruction.strip()

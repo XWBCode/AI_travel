@@ -85,6 +85,15 @@ class WeatherSettings:
     # **不动** M3-1 的 Java 侧缓存，这是另加的一层，只管生成链路
     inject_cache_seconds: int = 60
 
+    # ===== M3-3：调整期天气注入 =====
+    # 与生成链路分开一个开关：两条链路的延迟形态不同（生成是 SSE，调整是同步 JSON），
+    # 关掉其中一条不该连带影响另一条。默认 **false**，理由同上。
+    inject_on_adjust: bool = False
+    # 调整链路的硬预算，比生成期小：同步请求没有 SSE 的缓冲，天气耗时 100%
+    # 落在用户等白屏的时间里，"改个备注"被拖成 2 秒是不可接受的。
+    # 这是**整次注入的总预算**，不是每个城市各 1200ms。
+    inject_adjust_timeout_ms: int = 1200
+
     # ===== 和风天气凭据（D-03）=====
     # API Host 是**每个开发者的专属域名**，从控制台-设置复制；用错直接 403 INVALID HOST
     qweather_api_host: str = ""
@@ -161,6 +170,13 @@ class Settings:
             ),
             inject_cache_seconds=int(
                 _env("WEATHER_INJECT_CACHE_SECONDS", weather_raw.get("inject_cache_seconds", 60))
+            ),
+            inject_on_adjust=_env_bool(
+                "WEATHER_INJECT_ON_ADJUST", bool(weather_raw.get("inject_on_adjust", False))
+            ),
+            inject_adjust_timeout_ms=int(
+                _env("WEATHER_INJECT_ADJUST_TIMEOUT_MS",
+                     weather_raw.get("inject_adjust_timeout_ms", 1200))
             ),
             qweather_api_host=str(
                 _env("QWEATHER_API_HOST", weather_raw.get("qweather_api_host", "")) or ""

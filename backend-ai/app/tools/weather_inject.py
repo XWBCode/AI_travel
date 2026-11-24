@@ -301,6 +301,30 @@ def reset_cache() -> None:
     _cache.clear()
 
 
+# ---------------------------------------------------------------- 对 M3-3 的复用出口
+
+async def query_forecasts(
+    decision: InjectDecision,
+    cfg: Any,
+) -> tuple[list[tuple[str, Mapping[str, Any] | None]], int]:
+    """并发查 `decision.cities`，返回 `[(城市, payload)]` 与真实出网次数。
+
+    M3-3 的调整链路复用这一个入口，而不是自己再写一套并发查询。理由是两个语义
+    已经在 M3-2 用一整轮修对了，重写一遍等于让它们再长一个版本、再犯一次同样的错：
+
+    1. **超时用已完成的部分**（`asyncio.wait` 而不是 `wait_for(gather)`）；
+    2. **被取消的城市必须留在结果里**（payload=None），这样渲染层能把它写进
+       "本次没有拿到预报，请勿编造"，而不是让它静默消失。
+
+    这里只把 `_query` 抬成公开名，**不改它的任何行为**；缓存也在这条路径里
+    （`_fetch_city` 自己读写 `_cache`），所以调整链路天然与生成链路共享同一份短缓存，
+    不需要另开一套。预算由传入的 `cfg.inject_timeout_ms` 决定——调整链路用
+    `dataclasses.replace(cfg, inject_timeout_ms=...)` 换成本链路的小预算，
+    也就不必在这里多加一个预算参数。
+    """
+    return await _query(decision, cfg)
+
+
 # ---------------------------------------------------------------- 小工具
 
 
