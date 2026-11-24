@@ -63,12 +63,15 @@ app:
     # 天气查询上限（M3-1）：页面附属信息，慢到 5s 就该降级，不复用 300s 的流式读超时
     weather-timeout-ms: 5000
   weather:
-    # none | open-meteo。默认 none 是合规要求，不是「还没配」：
-    # Open-Meteo 免费端点禁商用、数据 CC BY 4.0 须署名，生产必须等 D-03 定案后再开。
-    # 开发/演示环境用 WEATHER_PROVIDER=open-meteo 显式打开。
+    # none | qweather | open-meteo。默认 none 是刻意的，不是「还没配」：
+    # 天气是外部依赖，没显式打开就不能默默调上游（W-8 合规 + 别把可用性交给别人）。
+    # D-03 已定案商用源为和风天气：WEATHER_PROVIDER=qweather
     provider: ${WEATHER_PROVIDER:none}
     timeout-ms: ${WEATHER_TIMEOUT_MS:5000}
-    cache-ttl-minutes: ${WEATHER_CACHE_TTL_MINUTES:30}
+    # 与 Python 侧 cache_ttl_minutes 必须同值。原来这里是 30，会覆盖 WeatherProperties
+    # 的字段默认值 60（Spring 绑定优先级：配置文件 > 字段默认值），结果 Java 按 30 分钟
+    # 判过期、Python 按 60 分钟给 expiresAt，两套时钟打架。D-03 定 60，这里跟上。
+    cache-ttl-minutes: ${WEATHER_CACHE_TTL_MINUTES:60}
     cache-max-entries: 1000
 
 logging:

@@ -4,7 +4,12 @@
 
 前提：
 - Java(:8080) 与 Python(:8000) 都已启动
-- Java 侧 ``WEATHER_PROVIDER`` 与 Python 侧 ``WEATHER_PROVIDER`` 都是 ``open-meteo``
+- 两侧 ``WEATHER_PROVIDER`` 一致（D-03 之后生产用 ``qweather``，``open-meteo`` 仅用于无凭据联调）
+
+怎么换源后不用改脚本：用环境变量给期望值
+    WEATHER_EXPECT_SOURCE=QWEATHER WEATHER_EXPECT_ATTRIBUTION=和风天气
+默认就是 qweather 那组。切回 Open-Meteo 时给
+    WEATHER_EXPECT_SOURCE=OPEN_METEO WEATHER_EXPECT_ATTRIBUTION=Open-Meteo
 
 验的是「HTTP 上能观察到的东西」，不重复单测已经覆盖的内部分支：
     W-1 有日期 + 已知城市 → 每天四组 FactField，source=TOOL、verified=true、带 fetchedAt
@@ -19,10 +24,21 @@
 """
 
 import json
+import os
 import sys
 import time
+from datetime import date, timedelta
 import urllib.error
 import urllib.request
+
+EXPECT_SOURCE = os.environ.get("WEATHER_EXPECT_SOURCE", "QWEATHER")
+EXPECT_ATTRIBUTION = os.environ.get("WEATHER_EXPECT_ATTRIBUTION", "和风天气")
+
+# 出发日期用「今天」而不是写死某一天：写死必然在某天之后变成"越窗口"，
+# 那时脚本会红，但红的原因跟功能无关——这种会腐烂的硬编码是测试负债。
+TODAY = date.today()
+START_ISO = TODAY.isoformat()
+END_ISO = (TODAY + timedelta(days=2)).isoformat()
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8080/api"
 ok_all = True
@@ -108,7 +124,7 @@ else:
 
 print("\n== 2. 补上出发日期后应能查到真实天气（W-1 / W-8）=")
 patch, _, _ = call("PATCH", "/plans/%s" % plan_id,
-                   {"startDate": "2026-11-24", "endDate": "2026-11-26",
+                   {"startDate": START_ISO, "endDate": END_ISO,
                     "baseVersion": plan.get("version")}, token)
 check("设置出发日期", patch.get("code") == 0, patch)
 version = (patch.get("data") or {}).get("version", plan.get("version"))
@@ -116,8 +132,8 @@ version = (patch.get("data") or {}).get("version", plan.get("version"))
 w, status, first_cost = call("GET", "/plans/%s/weather" % plan_id, token=token)
 data = w.get("data") or {}
 check("available=true", data.get("available") is True, data)
-check("W-8 响应含署名", "Open-Meteo" in (data.get("attribution") or ""), data.get("attribution"))
-check("source=OPEN_METEO", data.get("source") == "OPEN_METEO", data.get("source"))
+check("W-8 响应含署名", EXPECT_ATTRIBUTION in (data.get("attribution") or ""), data.get("attribution"))
+check("source=%s" % EXPECT_SOURCE, data.get("source") == EXPECT_SOURCE, data.get("source"))
 days = data.get("days") or []
 check("按行程天数返回（3 天）", len(days) == 3, [d.get("date") for d in days])
 if days:
@@ -128,7 +144,7 @@ if days:
           days[0].get("weather"))
     check("dayIndex 从 1 开始且连续", [d.get("dayIndex") for d in days] == [1, 2, 3],
           [d.get("dayIndex") for d in days])
-    check("日期与出发日对齐", (days[0].get("date") or "") == "2026-11-24", days[0].get("date"))
+    check("日期与出发日对齐", (days[0].get("date") or "") == START_ISO, days[0].get("date"))
     print("  样例：%s %s %s %s %s" % (
         days[0].get("date"), (days[0].get("city") or ""),
         (days[0].get("weather") or {}).get("display"),

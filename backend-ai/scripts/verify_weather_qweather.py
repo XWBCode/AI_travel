@@ -178,7 +178,53 @@ def main() -> int:
     record("6. 归因文案", "PASS" if "和风天气" in (result.get("attribution") or "") else "FAIL",
            result.get("attribution") or "")
 
-    # 7. 错误分型：用错 host，验证 403 立刻熔断（只打一次请求）
+    # 7. 错误分型 → 熔断（不消耗额度）
+    #
+    # 这里刻意分成三条，因为"用个错 host 看会不会熔断"这种写法是**错的**：
+    # 错 host 在真实网络里表现为 DNS 解析失败，根本到不了 QWeather，拿不到 403，
+    # 只会命中"网络异常"分支。那条分支归 soft 是正确的（抖动可自愈），
+    # 拿它证明 hard 熔断，属于用错证据。
+    # 所以 403 用注入响应来证（确定性、零额度），DNS 失败单独证"不许误判成 hard"。
+    import httpx
+
+    hits: list[str] = []
+
+    def _deny(request: httpx.Request) -> httpx.Response:
+        hits.append(str(request.url))
+        return httpx.Response(
+            403,
+            json={"error": {"status": 403, "type": "https://dev.qweather.com/docs/resource/error-code/"}},
+        )
+
+    # 7a. 403 = hard：一次就熔断，绝不重试（重试只会加速被风控）
+    weather_circuit.reset_all()
+    denied = asyncio.run(
+        weather.fetch_forecast(
+            "成都", start.isoformat(), 1, provider="qweather",
+            timeout_seconds=5.0, settings=cfg,
+            transport=httpx.MockTransport(_deny),
+        )
+    )
+    b1 = weather_circuit.breaker_for("qweather")
+    ok_403 = denied.get("ok") is False and len(hits) == 1 and b1.state == weather_circuit.OPEN
+    record("7a. 403→hard 立即熔断", "PASS" if ok_403 else "FAIL",
+           f"reason={denied.get('reason')} 请求次数={len(hits)} breaker={b1.state}")
+
+    # 7b. 熔断打开后必须拦住后续请求：不是"继续试"，是"根本不打"
+    before = len(hits)
+    blocked = asyncio.run(
+        weather.fetch_forecast(
+            "成都", start.isoformat(), 1, provider="qweather",
+            timeout_seconds=5.0, settings=cfg,
+            transport=httpx.MockTransport(_deny),
+        )
+    )
+    ok_block = blocked.get("ok") is False and len(hits) == before
+    record("7b. 熔断后不再发请求", "PASS" if ok_block else "FAIL",
+           f"reason={blocked.get('reason')} 新增请求={len(hits) - before}")
+
+    # 7c. DNS 失败（真实错 host）= soft：不许误判成 hard。网络抖动是能自愈的，
+    #     一次 DNS 失败就熔断，等于把偶发网络问题放大成一次功能全挂。
     weather_circuit.reset_all()
     bad_cfg = type(cfg)(**{**cfg.__dict__, "qweather_api_host": "definitely-wrong-host.example.com"})
     bad = asyncio.run(
@@ -187,11 +233,12 @@ def main() -> int:
             timeout_seconds=5.0, settings=bad_cfg,
         )
     )
-    breaker = weather_circuit.breaker_for("qweather")
-    ok = bad.get("ok") is False and breaker.state == weather_circuit.OPEN
-    record("7. 错误分型→熔断", "PASS" if ok else "FAIL",
-           f"reason={bad.get('reason')} breaker={breaker.state}")
+    b2 = weather_circuit.breaker_for("qweather")
+    ok_soft = bad.get("ok") is False and b2.state != weather_circuit.OPEN
+    record("7c. DNS 失败→soft 不熔断", "PASS" if ok_soft else "FAIL",
+           f"reason={bad.get('reason')} breaker={b2.state} 连续失败={b2.failures}")
 
+    weather_circuit.reset_all()
     return _summary()
 
 
