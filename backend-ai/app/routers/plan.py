@@ -10,18 +10,21 @@
 
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 from typing import AsyncGenerator
 
 from fastapi import APIRouter, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
+from app.config import settings
 from app.llm.provider import LLMError
 from app.plan.adjust import AdjustError, run_adjust
 from app.plan.generator import run_generation
 from app.plan.intent import analyze_messages
+from app.tools import adjust_metrics, inject_gate
 
 logger = logging.getLogger("ai-travel.plan")
 
@@ -161,9 +164,33 @@ async def plan_adjust(req: AdjustRequest, request: Request):
     """
     provider = request.app.state.provider
     trace_id = request.headers.get("X-Trace-Id", "")
+    # 灰度身份（S5）：只有拿着内部共享密钥签过的 `X-User-Id` 才算数。
+    # 校验失败不影响本次请求的任何其他行为——它只决定"这次要不要查天气"。
+    identity = inject_gate.verify_identity(
+        request.headers, secret=settings.internal_secret, trace_id=trace_id
+    )
     try:
-        data = await run_adjust(provider, req.plan, req.instruction, trace_id)
+        data = await run_adjust(provider, req.plan, req.instruction, trace_id, identity)
     except AdjustError as e:
         logger.info("adjust rejected trace=%s code=%s msg=%s", trace_id, e.code, e.message)
         return {"code": e.code, "message": e.message, "data": None, "traceId": trace_id}
     return {"code": 0, "message": "ok", "data": data, "traceId": trace_id}
+
+
+@router.get("/internal/metrics/weather-adjust")
+async def weather_adjust_metrics(request: Request):
+    """调整期天气的进程内观测快照（S5）。
+
+    只读、无副作用、不含任何用户内容：只有计数、耗时与灰度判定结果。
+    放在 `/v1/internal/*` 下是因为它**不是**给前端用的接口——运维与灰度观察才需要它。
+
+    配了 `AI_INTERNAL_SECRET` 时要求带 `X-Internal-Token`（同值）：指标本身不敏感，
+    但"这个服务对公网无鉴权"不该因为一个只读端点而变成默认事实。
+    """
+    secret = settings.internal_secret
+    if secret:
+        token = request.headers.get("x-internal-token", "")
+        if not hmac.compare_digest(token, secret):
+            return JSONResponse(status_code=403,
+                                content={"code": 40300, "message": "internal token required"})
+    return {"code": 0, "message": "ok", "data": adjust_metrics.snapshot()}

@@ -17,10 +17,13 @@ import re
 import time
 from typing import Any
 
+from app.config import settings
 from app.llm.prompts import build_adjust_messages
 from app.llm.provider import ChatMessage, LLMError, LLMProvider
 from app.plan.generator import extract_json
-from app.tools import weather_adjust
+from app.tools import adjust_metrics, inject_gate, weather_adjust
+from app.tools.weather_inject import InjectResult
+from app.tools.weather_reasons import R_CIRCUIT_OPEN
 
 logger = logging.getLogger("ai-travel.adjust")
 
@@ -196,8 +199,12 @@ def mock_adjust(plan_view: dict) -> dict:
 
 
 async def run_adjust(provider: LLMProvider, plan_view: dict, instruction: str,
-                     trace_id: str = "") -> dict:
-    """产出建议。失败抛 {@link AdjustError}。"""
+                     trace_id: str = "", identity: inject_gate.Identity | None = None) -> dict:
+    """产出建议。失败抛 {@link AdjustError}。
+
+    `identity` 是 S5 灰度用的调用方身份（由路由层从请求头解析）。缺省为空身份，
+    等价于"没有任何可信身份"——在 prod 配了白名单时会被拒，在 dev 无白名单时不受影响。
+    """
     if not instruction or not instruction.strip():
         raise AdjustError("请先说要调整什么，比如「下午不去了」")
 
@@ -207,8 +214,17 @@ async def run_adjust(provider: LLMProvider, plan_view: dict, instruction: str,
         logger.info("adjust(mock) trace=%s ops=%d", trace_id, len(result["ops"]))
         return {**result, "mock": True}
 
-    # 放在 mock 分支之后：mock 不读配置、不查天气，单测天然零出网（与生成链路同一取舍）
-    weather = await weather_adjust.prepare_adjust_weather_block(plan_view, trace_id=trace_id)
+    # 灰度闸门（S5）在**注入之前**判：不放行就完全不碰 weather_adjust，
+    # 于是 S1~S4 的判断逻辑一行不用改，"关掉等于旧行为"仍然是结构保证。
+    gate = inject_gate.decide_and_log(
+        identity or inject_gate.Identity(), settings=settings, trace_id=trace_id
+    )
+    adjust_metrics.record_gray(gate.allow, gate.reason)
+    if gate.allow:
+        weather = await weather_adjust.prepare_adjust_weather_block(plan_view, trace_id=trace_id)
+    else:
+        # 与 weather_adjust 的失败结果同形，下游（含数值闸门）无需区分来源
+        weather = InjectResult(block=None, brief=None, reason=gate.reason)
 
     messages = [ChatMessage(role=m["role"], content=m["content"])
                 for m in build_adjust_messages(plan_view, instruction, weather.block)]
@@ -219,12 +235,16 @@ async def run_adjust(provider: LLMProvider, plan_view: dict, instruction: str,
             chunks.append(piece)
     except LLMError as e:
         logger.error("adjust llm failed trace=%s err=%s", trace_id, e)
+        adjust_metrics.record_outcome("failed", weather_ms=weather.elapsed_ms,
+                                      total_ms=_ms(started), timed=True)
         raise AdjustError(f"调整建议生成失败：{e}", code=50201) from e
 
     raw = "".join(chunks)
     parsed, error, _reason = extract_json(raw)
     if parsed is None:
         logger.warning("adjust parse failed trace=%s err=%s head=%s", trace_id, error, raw[:200])
+        adjust_metrics.record_outcome("failed", weather_ms=weather.elapsed_ms,
+                                      total_ms=_ms(started), timed=True)
         raise AdjustError("模型返回的内容不是合法 JSON，请重试")
 
     summary = _text(parsed.get("summary")) or "行程调整建议"
@@ -232,6 +252,8 @@ async def run_adjust(provider: LLMProvider, plan_view: dict, instruction: str,
     problems = validate_ops(ops, plan_view)
     if problems:
         logger.warning("adjust rejected trace=%s count=%d first=%s", trace_id, len(problems), problems[0])
+        adjust_metrics.record_outcome("failed", weather_ms=weather.elapsed_ms,
+                                      total_ms=_ms(started), timed=True)
         raise AdjustError("建议内容不合法：" + problems[0])
 
     # 数值闸门（M3-3 · S3）：**只在本次真的注入过天气时**生效。
@@ -244,13 +266,33 @@ async def run_adjust(provider: LLMProvider, plan_view: dict, instruction: str,
                 "adjust weather value rejected trace=%s count=%d first=%s",
                 trace_id, len(leaks), leaks[0],
             )
+            adjust_metrics.record_outcome(
+                "value_gate", weather_ms=weather.elapsed_ms, total_ms=_ms(started),
+                cities=weather.cities, upstream=weather.upstream, timed=True,
+            )
             raise AdjustError("建议里抄了天气数值：" + leaks[0] + "，请换一种说法重试")
 
     logger.info("adjust(real) trace=%s ops=%d", trace_id, len(ops or []))
     # 分段耗时：调整链路没有 SSE，用户等待 = 天气 + 模型，两个数都要能看到
     model_ms = _ms(started)
+    total_ms = weather.elapsed_ms + model_ms
     logger.info(
         "adjust_done trace=%s injected=%s weatherMs=%d modelMs=%d totalMs=%d",
-        trace_id, weather.injected, weather.elapsed_ms, model_ms, weather.elapsed_ms + model_ms,
+        trace_id, weather.injected, weather.elapsed_ms, model_ms, total_ms,
+    )
+    # 一次请求只落一个互斥结果，四种（成功/无天气/熔断/被拦）不会串
+    if weather.injected:
+        kind = "injected"
+    elif weather.reason == R_CIRCUIT_OPEN:
+        kind = "circuit_open"
+    elif not gate.allow:
+        kind = "gray_denied"
+    else:
+        kind = "no_weather"
+    adjust_metrics.record_outcome(
+        kind, weather_ms=weather.elapsed_ms, total_ms=total_ms,
+        cities=weather.cities, upstream=weather.upstream,
+        # 灰度拒绝的 0ms 是"没查"，不是"很快"——不能进分位数
+        timed=gate.allow,
     )
     return {"summary": summary[:100], "ops": ops or [], "mock": False}

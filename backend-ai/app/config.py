@@ -94,6 +94,15 @@ class WeatherSettings:
     # 这是**整次注入的总预算**，不是每个城市各 1200ms。
     inject_adjust_timeout_ms: int = 1200
 
+    # ===== M3-3 · S5：灰度白名单与运行时急停 =====
+    # 内部账号白名单（逗号分隔的用户 ID）。**默认空**：
+    # - prod 下空 = 不注入（fail-closed，见 app/tools/inject_gate.py）
+    # - dev/test 下空 = 整个实例视为内部实例（S4 的 63 项矩阵靠这条继续可跑）
+    # 刻意不读 config.yaml：那个文件随产物入库，灰度名单是运行期敏感配置。
+    inject_adjust_users: str = ""
+    # 运行时急停：该文件存在即立刻停止注入，无需重启进程。空 = 不启用急停。
+    inject_adjust_kill_file: str = ""
+
     # ===== 和风天气凭据（D-03）=====
     # API Host 是**每个开发者的专属域名**，从控制台-设置复制；用错直接 403 INVALID HOST
     qweather_api_host: str = ""
@@ -123,6 +132,10 @@ class Settings:
     # 默认空串而不是 dev：空串代表「没人声明过」，用于让数据源合规闸门 fail-closed。
     # 具体判定见 app/tools/weather_policy.py。
     env: str = ""
+    # Java ⇄ Python 的内部共享密钥（S5 灰度身份签名用）。
+    # 只从环境变量读，**不给 yaml 默认值**：它等同于凭据，入库就等于泄露。
+    # 空串 = 无法校验身份 → 灰度一律不放行（fail-closed），默认关闭时不影响任何行为。
+    internal_secret: str = field(default="", repr=False)
     llm: LLMSettings = field(default_factory=LLMSettings)
     weather: WeatherSettings = field(default_factory=WeatherSettings)
 
@@ -178,6 +191,9 @@ class Settings:
                 _env("WEATHER_INJECT_ADJUST_TIMEOUT_MS",
                      weather_raw.get("inject_adjust_timeout_ms", 1200))
             ),
+            # 灰度名单与急停只走环境变量，不读 config.yaml（那个文件入库）
+            inject_adjust_users=str(_env("WEATHER_INJECT_ADJUST_USERS", "") or ""),
+            inject_adjust_kill_file=str(_env("WEATHER_INJECT_ADJUST_KILL_FILE", "") or ""),
             qweather_api_host=str(
                 _env("QWEATHER_API_HOST", weather_raw.get("qweather_api_host", "")) or ""
             ),
@@ -216,6 +232,7 @@ class Settings:
             host=str(_env("AI_SERVICE_HOST", server.get("host", "0.0.0.0"))),
             port=int(_env("AI_SERVICE_PORT", server.get("port", 8000))),
             env=env,
+            internal_secret=str(_env("AI_INTERNAL_SECRET", "") or ""),
             llm=llm,
             weather=weather,
         )
