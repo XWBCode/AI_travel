@@ -125,10 +125,38 @@ _PLAN_PROMPT_HEAD = """你是「AI 旅行助手」的计划编译器。你的唯
 # 改规则请改 JSON：Python 提示词与 Java 校验器读同一份，CI 会拦下只改一侧的提交。
 PLAN_SYSTEM_PROMPT = _PLAN_PROMPT_HEAD + render_rules_section() + "\n"
 
+# 注入块与用户原话之间的分隔。写成「用户需求」而不是「用户说」：
+# 上面那段是我们查到的数据，下面这段才是用户原话，模型不能把两者混为一谈
+_USER_SECTION_HEADER = "【用户需求】"
 
-def build_plan_messages(history: list[dict[str, str]]) -> list[dict]:
-    """计划生成场景的消息组装：用专用 system prompt，历史照旧作为 user/assistant 传入。"""
-    return build_messages(history, system_prompt=PLAN_SYSTEM_PROMPT)
+
+def build_plan_messages(history: list[dict[str, str]], weather_block: str | None = None) -> list[dict]:
+    """计划生成场景的消息组装：用专用 system prompt，历史照旧作为 user/assistant 传入。
+
+    `weather_block` 是 M3-2 的注入块（`weather_brief.render_brief_block` 的产出）。
+    它放在**最后一条 user 消息的最前面**，并与用户原话用「【用户需求】」分段隔开：
+
+    - 不进 system prompt：规则段由 `contracts/travel-plan/plan_rules_v1.json` 渲染，
+      Python 提示词与 Java 校验器读同一份，往里塞运行时数据会让它不再是"纯规则"；
+    - 不新增一条 user 消息：那会让模型以为用户多说了句话。天气是**本次请求的数据**，
+      和 `build_adjust_messages` 里「【当前计划】/【用户要求】」是同一路数；
+    - 用户原话仍然**逐字原样**放在自己的段里，不做任何拼接（总纲 8.1 防注入）。
+
+    `weather_block` 为空时返回的消息与 M3-2 之前**完全一致**（同一份 list 内容），
+    这是"开关关闭时行为不变"最直接的写法。
+    """
+    messages = build_messages(history, system_prompt=PLAN_SYSTEM_PROMPT)
+    if not weather_block:
+        return messages
+
+    for message in reversed(messages):
+        if message["role"] == "user":
+            message["content"] = f"{weather_block}\n\n{_USER_SECTION_HEADER}\n{message['content']}"
+            return messages
+
+    # 兜底：没有 user 消息（路由层 `_history` 会拦掉，这里只防"以后有人直接调本函数"）
+    messages.append({"role": "user", "content": weather_block})
+    return messages
 
 
 def build_messages(history: list[dict[str, str]], system_prompt: str = SYSTEM_PROMPT_TRAVEL_ASSISTANT) -> list[dict]:

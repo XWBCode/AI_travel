@@ -105,8 +105,18 @@ def can_inject(
     *,
     today: date,
     window_days: int = FORECAST_WINDOW_DAYS,
+    max_cities: int = MAX_INJECT_CITIES,
 ) -> InjectDecision:
     """按 PM 批复 D2 的四条排除项判断：没日期、超窗口、没城市、城市不可用。
+
+    查询范围按 PM 给的四条规则收口（顺序即优先级）：
+    1. 有 `days`：按行程天数查；
+    2. 有 `endDate`：查询范围**不得超过** `endDate`；
+    3. 两者都没有：从 `startDate` 查满剩余窗口；
+    4. 任何情况下都不超过 QWeather 的 10 天预报能力（`window_end` 兜底）。
+
+    规则 2 是"上限"而不是"替代"：`days` 与 `endDate` 同时存在且不一致时，
+    取更小的那个 —— 少查一天只是少一条参考，多查一天则是把行程外的天气塞进 prompt。
 
     「城市无法解析或没有有效坐标」在这里不做判断——那要看坐标表，
     属于 `resolve_city` 的职责，由实际查询时的 `CITY_UNKNOWN` 反映，
@@ -134,18 +144,40 @@ def can_inject(
         # 已过去的日期同样归到这一类：用户改日期就行，与"太远"是同一个动作
         return InjectDecision(False, SKIP_OUT_OF_RANGE)
 
-    remaining = (window_end - start).days + 1
+    last_day = _last_day(slots, start, window_end)
+    remaining = (last_day - start).days + 1
+
     wanted = slots.get("days")
     try:
         wanted_days = int(wanted) if wanted is not None else 0
     except (TypeError, ValueError):
         wanted_days = 0
-    # 没说天数就用满剩余窗口：不知道行程多长时，只有把窗口填满才有用；
-    # 上限仍受窗口约束，所以最多也就 10 天，不会失控
+    # 没说天数就用满可用范围：不知道行程多长时，只有把范围填满才有用；
+    # 上限仍受窗口与 endDate 约束，所以最多也就 10 天，不会失控
     days = min(wanted_days, remaining) if wanted_days > 0 else remaining
     days = max(days, 1)
 
-    return InjectDecision(True, None, tuple(destinations[:MAX_INJECT_CITIES]), days, start)
+    return InjectDecision(True, None, tuple(destinations[: max(max_cities, 1)]), days, start)
+
+
+def _last_day(slots: Mapping[str, Any], start: date, window_end: date) -> date:
+    """本次查询允许查到的最后一天 = min(窗口末日, endDate)。
+
+    解析不了或早于 startDate 的 `endDate` 一律忽略，而不是据此判定"不能注入"：
+    - 格式错是槽位抽取的问题，不该连带把整次注入否掉；
+    - 早于 startDate 是自相矛盾的输入，拿它当上限会算出零天甚至负数天，
+      那时正确的行为是回到"不知道结束日"的默认，而不是判成"这段行程没有天气"。
+    """
+    raw_end = str(slots.get("endDate") or "").strip()
+    if not raw_end:
+        return window_end
+    try:
+        end = date.fromisoformat(raw_end)
+    except (TypeError, ValueError):
+        return window_end
+    if end < start:
+        return window_end
+    return min(end, window_end)
 
 
 def _destinations(slots: Mapping[str, Any]) -> list[str]:

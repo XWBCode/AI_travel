@@ -1,8 +1,11 @@
-"""计划生成编排：意图 → 生成 → 校验 → 事件。
+"""计划生成编排：意图 → （天气快照）→ 生成 → 校验 → 事件。
 
 与 05 文档 §3 的降级流程严格对应：
   生成 → 校验通过 → plan_draft
        → 校验失败 → plan_rejected + error（业务表写入 0 条，不自动修复、不自动重试）
+
+M3-2 只在这条流水线里插了一步"取天气快照"（`app.tools.weather_inject`），
+默认关闭；任何拿不到天气的情况都完全退回今天的行为，不阻塞、不降级、不写占位。
 
 "不自动修复"是刻意的：自动补全等于替模型编造，会让 AC-07 的防线形同虚设。
 """
@@ -21,6 +24,7 @@ from app.llm.provider import ChatMessage, LLMError, LLMProvider
 from app.plan import mock
 from app.plan.contract import count_fact_fields, verify
 from app.plan.intent import TravelIntent
+from app.tools import weather_inject
 
 logger = logging.getLogger("ai-travel.plan")
 
@@ -85,12 +89,15 @@ def extract_json(text: str, finish_reason: str | None = None) -> tuple[dict[str,
 
 
 async def _collect(provider: LLMProvider, history: list[dict[str, str]],
-                   trace_id: str) -> tuple[str, str | None]:
+                   trace_id: str, weather_block: str | None = None) -> tuple[str, str | None]:
     """把流式输出拼成完整文本。计划场景必须拿到完整 JSON 才能校验。
 
     同时带回 finish_reason：截断与"模型写崩"是两种病，只有上游能告诉我们哪一种。
     """
-    messages = [ChatMessage(role=m["role"], content=m["content"]) for m in build_plan_messages(history)]
+    messages = [
+        ChatMessage(role=m["role"], content=m["content"])
+        for m in build_plan_messages(history, weather_block)
+    ]
     chunks: list[str] = []
     async for piece in provider.stream_chat(messages, trace_id=trace_id, json_mode=True):
         chunks.append(piece)
@@ -146,8 +153,16 @@ async def run_generation(
                     trace_id, intent.slots.get("days"), plan.get("unverifiedFieldCount"))
         return
 
+    # M3-2：生成前取一次天气快照。默认关闭（`WEATHER_INJECT_ON_GENERATION=false`），
+    # 关闭时这里只是一次配置读取，行为与 M3-2 之前逐字相同。
+    #
+    # 必须在第一次 LLM token 之前：注入内容要先有，才可能进 prompt。
+    # mock 分支上面已经 return，所以这条路径只在"真模型"上走 —— mock 不读 prompt，
+    # 查了纯属白花额度，也让单测保持零出网。
+    weather = await weather_inject.prepare_weather_block(intent.slots, trace_id=trace_id)
+
     try:
-        raw, finish_reason = await _collect(provider, history, trace_id)
+        raw, finish_reason = await _collect(provider, history, trace_id, weather.block)
     except LLMError as e:
         logger.error("plan llm failed trace=%s err=%s", trace_id, e)
         yield "error", {"code": 50201, "message": str(e)}
@@ -190,6 +205,11 @@ async def run_generation(
         }
         yield "error", {"code": 10002, "message": "生成结果未通过校验，请重试"}
         return
+
+    # 附注在 verify 之后追加：这句话是我们加的事实性附注，万一不合 freeText 规则，
+    # 正确处置是"不加"，而不是把一份本来合格的计划判成不合格（详见 attach_ai_note）
+    if weather.brief is not None:
+        weather_inject.attach_ai_note(plan, weather.brief)
 
     yield "plan_draft", {"draftId": draft_id, "plan": plan, "mock": False}
     yield "done", {

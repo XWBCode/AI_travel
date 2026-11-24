@@ -147,6 +147,63 @@ def test_single_destination_falls_back_when_list_missing():
     assert d.cities == ("成都",)
 
 
+# ---------------------------------------------------------------- 查询范围：PM 四条规则
+#
+# PM 原话：① 有 days 按行程天数；② 有 endDate 查询范围不得超过 endDate；
+# ③ 都没有则从 startDate 查满剩余窗口；④ 无论如何不超过 10 天。
+# ②是"上限"而不是"替代"：两者同时存在时取更小的那个 ——
+# 少查一天只是少一条参考，多查一天则是把行程外的天气塞进 prompt。
+
+
+def test_end_date_caps_the_range_below_days():
+    """出发 11-24、行程 7 天、但 11-26 就结束 → 只能查 3 天。"""
+    slots = {**SLOTS_OK, "days": 7, "endDate": "2026-11-26"}
+    d = wb.can_inject(slots, today=TODAY)
+    assert d.allowed is True
+    assert d.days == 3
+
+
+def test_end_date_used_when_days_missing():
+    """只有日期区间、没有天数：按区间查，不要退化成"填满 10 天窗口"。"""
+    slots = {**SLOTS_OK, "days": None, "endDate": "2026-11-26"}
+    d = wb.can_inject(slots, today=TODAY)
+    assert d.days == 3
+
+
+def test_end_date_beyond_window_is_clamped_by_window():
+    """endDate 再远也不能越过 10 天窗口（规则④压住规则②）。"""
+    slots = {**SLOTS_OK, "days": None, "endDate": "2026-12-31"}
+    d = wb.can_inject(slots, today=TODAY)
+    assert d.days == 10
+
+
+def test_days_wins_when_end_date_is_later():
+    """行程天数比 endDate 短时按天数查：多查的日子没有任何用途。"""
+    slots = {**SLOTS_OK, "days": 2, "endDate": "2026-11-29"}
+    d = wb.can_inject(slots, today=TODAY)
+    assert d.days == 2
+
+
+@pytest.mark.parametrize("value", ["2026-11-20", "下个月", ""])
+def test_unusable_end_date_is_ignored_not_fatal(value):
+    """早于出发日 / 格式错 / 为空的 endDate 一律忽略。
+
+    这里刻意**不**判成"不能注入"：槽位抽取出问题，不该连带把整次注入否掉。
+    早于出发日的输入如果拿去当上限，会算出零天甚至负数天。
+    """
+    slots = {**SLOTS_OK, "days": 3, "endDate": value}
+    d = wb.can_inject(slots, today=TODAY)
+    assert d.allowed is True
+    assert d.days == 3
+
+
+def test_max_cities_is_configurable():
+    """城市上限来自配置（`WEATHER_INJECT_MAX_CITIES`），不是写死在函数里。"""
+    slots = {**SLOTS_OK, "destinations": ["成都", "都江堰", "乐山"]}
+    assert wb.can_inject(slots, today=TODAY, max_cities=1).cities == ("成都",)
+    assert wb.can_inject(slots, today=TODAY, max_cities=0).cities == ("成都",), "下限兜底为 1"
+
+
 # ================================================================ build_brief
 
 

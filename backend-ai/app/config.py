@@ -73,6 +73,18 @@ class WeatherSettings:
     circuit_failure_threshold: int = 3
     circuit_cooldown_seconds: float = 300.0
 
+    # ===== M3-2：生成期天气注入 =====
+    # 默认 **false**。理由与 `provider` 默认 `none` 完全一样：外部依赖没被显式打开，
+    # 就不该在生成链路里悄悄生效。关闭时生成链路的行为与 M3-2 之前逐字相同。
+    inject_on_generation: bool = False
+    # 注入阶段的硬预算。超时用已完成的部分，一个城市都没成就当没天气（见 weather_inject）
+    inject_timeout_ms: int = 2000
+    # 一次最多查几个城市。上限是额度与延迟的折中（D4：并发 3）
+    inject_max_cities: int = 3
+    # 生成期进程内短缓存（D5：用户连点"重新生成"不该重复打上游）。
+    # **不动** M3-1 的 Java 侧缓存，这是另加的一层，只管生成链路
+    inject_cache_seconds: int = 60
+
     # ===== 和风天气凭据（D-03）=====
     # API Host 是**每个开发者的专属域名**，从控制台-设置复制；用错直接 403 INVALID HOST
     qweather_api_host: str = ""
@@ -137,6 +149,18 @@ class Settings:
             ),
             circuit_cooldown_seconds=float(
                 _env("WEATHER_CIRCUIT_COOLDOWN_SECONDS", weather_raw.get("circuit_cooldown_seconds", 300))
+            ),
+            inject_on_generation=_env_bool(
+                "WEATHER_INJECT_ON_GENERATION", bool(weather_raw.get("inject_on_generation", False))
+            ),
+            inject_timeout_ms=int(
+                _env("WEATHER_INJECT_TIMEOUT_MS", weather_raw.get("inject_timeout_ms", 2000))
+            ),
+            inject_max_cities=int(
+                _env("WEATHER_INJECT_MAX_CITIES", weather_raw.get("inject_max_cities", 3))
+            ),
+            inject_cache_seconds=int(
+                _env("WEATHER_INJECT_CACHE_SECONDS", weather_raw.get("inject_cache_seconds", 60))
             ),
             qweather_api_host=str(
                 _env("QWEATHER_API_HOST", weather_raw.get("qweather_api_host", "")) or ""
