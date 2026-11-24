@@ -14,6 +14,7 @@ from app.config import settings
 from app.llm.provider import LLMError, build_provider
 from app.plan.contract import DRAFT_SCHEMA_FILE, load_schema
 from app.routers import chat, health, plan, weather
+from app.tools import service_guard
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,6 +34,7 @@ async def lifespan(app: FastAPI):
     )
     if settings.weather.enabled:
         logger.info("天气数据源: %s", settings.weather.provider)
+    _log_guard_mode()
     # 启动时构建 Provider，配置错误直接启动失败，而不是等第一个用户请求才报错
     app.state.provider = build_provider(settings.llm)
     logger.info("LLM Provider 已就绪: %s", app.state.provider.describe())
@@ -43,6 +45,25 @@ async def lifespan(app: FastAPI):
     logger.info("TravelPlan 契约已加载: %s (schemaVersion=%s)", schema.get("$id"), "1.0")
     yield
     logger.info("AI 服务已关闭")
+
+
+def _log_guard_mode() -> None:
+    """把 `/v1/*` 的鉴权模式写进启动日志。
+
+    "这台机器到底有没有鉴权"必须能在日志里一眼看到，否则排障只能靠猜配置。
+    """
+    if settings.internal_secret:
+        logger.info("/v1/* 鉴权: 强制令牌（AI_INTERNAL_SECRET 已配置）")
+    elif (settings.env or "").strip().lower() in ("prod", "production"):
+        logger.error(
+            "/v1/* 鉴权: APP_ENV=prod 但未配 AI_INTERNAL_SECRET —— "
+            "所有内部调用将被拒绝（40301），这是预期行为，先配密钥"
+        )
+    else:
+        logger.warning(
+            "/v1/* 鉴权: 未配密钥，仅放行回环来源（dev 模式）。"
+            "非回环来源一律 403；生产必须先配 AI_INTERNAL_SECRET"
+        )
 
 
 def create_app() -> FastAPI:
@@ -60,6 +81,31 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def guard_internal_calls(request: Request, call_next):
+        """`/v1/*` 接口级鉴权（TD-02）：只有持有内部令牌的 Java 服务能调。
+
+        判定表与取舍见 `app/tools/service_guard.py`。这里只负责接线，不藏判断逻辑——
+        判断逻辑要能单测，所以放在纯函数里。
+        """
+        # CORS 预检不带自定义头，拦它等于让浏览器端永远拿不到响应。
+        if request.method != "OPTIONS" and service_guard.is_protected(request.url.path):
+            denied = service_guard.decide(
+                request.headers,
+                secret=settings.internal_secret,
+                env=settings.env,
+                client_host=request.client.host if request.client else None,
+            )
+            if denied is not None:
+                logger.warning(
+                    "内部接口被拒 path=%s from=%s code=%s",
+                    request.url.path,
+                    request.client.host if request.client else "?",
+                    denied["code"],
+                )
+                return JSONResponse(status_code=403, content=denied)
+        return await call_next(request)
 
     app.include_router(health.router)
     app.include_router(chat.router)

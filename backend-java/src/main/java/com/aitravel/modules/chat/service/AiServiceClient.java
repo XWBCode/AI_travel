@@ -56,6 +56,8 @@ public class AiServiceClient {
     private final Duration weatherTimeout;
     /** 灰度身份签名密钥（M3-3 · S5）：空串 = 不发身份头，Python 侧按"不可信"处理 */
     private final String internalSecret;
+    /** 非 ASCII 密钥的告警只打一次，避免每个请求刷一条 ERROR */
+    private volatile boolean tokenHeaderWarned = false;
 
     public AiServiceClient(com.aitravel.common.config.AiServiceProperties props) {
         this.baseUrl = props.getBaseUrl();
@@ -103,7 +105,7 @@ public class AiServiceClient {
             return;
         }
 
-        HttpRequest request = HttpRequest.newBuilder()
+        HttpRequest request = withInternalToken(HttpRequest.newBuilder())
                 .uri(URI.create(baseUrl + "/v1/chat/stream"))
                 .header("Content-Type", "application/json")
                 .header("Accept", "text/event-stream")
@@ -148,7 +150,7 @@ public class AiServiceClient {
                     com.aitravel.common.api.ErrorCode.BAD_REQUEST, "计划请求序列化失败");
         }
 
-        HttpRequest request = HttpRequest.newBuilder()
+        HttpRequest request = withInternalToken(HttpRequest.newBuilder())
                 .uri(URI.create(baseUrl + "/v1/plan/generate"))
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
@@ -203,7 +205,7 @@ public class AiServiceClient {
         }
 
         String safeTrace = traceId == null ? "" : traceId;
-        HttpRequest.Builder builder = HttpRequest.newBuilder()
+        HttpRequest.Builder builder = withInternalToken(HttpRequest.newBuilder())
                 .uri(URI.create(baseUrl + "/v1/plan/adjust"))
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
@@ -271,7 +273,7 @@ public class AiServiceClient {
             return null;
         }
 
-        HttpRequest request = HttpRequest.newBuilder()
+        HttpRequest request = withInternalToken(HttpRequest.newBuilder())
                 .uri(URI.create(baseUrl + "/v1/plan/intent"))
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
@@ -319,7 +321,7 @@ public class AiServiceClient {
                 + "&city=" + URLEncoder.encode(city == null ? "" : city, StandardCharsets.UTF_8)
                 + "&start_date=" + URLEncoder.encode(startDate == null ? "" : startDate, StandardCharsets.UTF_8);
 
-        HttpRequest request = HttpRequest.newBuilder()
+        HttpRequest request = withInternalToken(HttpRequest.newBuilder())
                 .uri(URI.create(baseUrl + "/v1/weather" + query))
                 .header("Accept", "application/json")
                 .header("X-Trace-Id", traceId == null ? "" : traceId)
@@ -443,6 +445,51 @@ public class AiServiceClient {
      *
      * @return 签名为空串表示"发不出可信身份"（没配密钥或算法异常），调用方应不发头
      */
+    /**
+     * 给发往 AI 服务的请求补内部令牌（TD-02）。
+     * <p>
+     * 复用与灰度身份签名相同的 {@code AI_INTERNAL_SECRET}：一个进程只维护一个内部密钥，
+     * 少一个"两处配了不同值"的坑。Python 侧对 {@code /v1/*} 的判定见
+     * {@code backend-ai/app/tools/service_guard.py}。
+     * <p>
+     * 没配密钥时<b>不发头</b>，而不是发空串——服务端会按来源地址判定
+     * （回环放行 / 非回环 403）。这里刻意不做本地判断，否则两端各有一套
+     * "什么时候算安全"的实现，迟早对不上。
+     * <p>
+     * <b>非 ASCII 密钥不能直接放头里</b>：HTTP 头值只接受可见 ASCII 与控制字符以外的字节，
+     * 中文密钥会抛 {@code IllegalArgumentException: invalid header value}，
+     * 把整条 AI 调用链打断——比"鉴权没生效"更糟，因为它是崩，不是降级。
+     * 身份签名那边没这个问题（HMAC 输出 hex，不传明文），所以同一密钥可以继续用于签名；
+     * 这里只降级为"不发令牌头"，并打一条 ERROR 让人看见。
+     */
+    private HttpRequest.Builder withInternalToken(HttpRequest.Builder builder) {
+        if (internalSecret.isBlank()) {
+            return builder;
+        }
+        if (!isHeaderSafe(internalSecret)) {
+            if (!tokenHeaderWarned) {
+                tokenHeaderWarned = true;
+                log.error("AI_INTERNAL_SECRET 含非 ASCII 字符，无法作为 HTTP 头发送内部令牌，"
+                        + "本次及后续请求都不会带 X-Internal-Token（Python 侧配置了密钥时会返 403）。"
+                        + "请改用可见 ASCII 字符的密钥；灰度身份签名不受影响，它走 HMAC 不传明文。");
+            }
+            return builder;
+        }
+        builder.header("X-Internal-Token", internalSecret);
+        return builder;
+    }
+
+    /** HTTP 头值是否只含可见 ASCII（RFC 7230 field-value 的安全子集）。 */
+    private static boolean isHeaderSafe(String value) {
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c < 0x20 || c > 0x7E) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private String signIdentity(Long userId, String traceId) {
         if (internalSecret.isBlank()) {
             return "";

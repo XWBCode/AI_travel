@@ -144,9 +144,13 @@ def main() -> int:
     # 所以这一项从"看配置推断"改成"实测优先"——能打一枪就别猜。
     if args.url:
         check_fail_closed(args.url.rstrip("/"), env)
+        # ------------------------------------------------------------ 9 业务接口鉴权
+        check_service_guard(args.url.rstrip("/"), settings.internal_secret)
     else:
         report("WARN", "8. 未实测指标端点是否 fail-closed",
                "代码已 fail-closed（TD-01 已关闭）；加 --url 可现场确认无令牌是否被拒")
+        report("WARN", "9. 未实测业务接口鉴权（TD-02）",
+               "代码已加闸门（TD-02 已关闭）；加 --url 可现场确认无令牌调不动 /v1/plan/*")
 
     # ---------------------------------------------------------------- 汇总
     failed = [item for level, item, _ in RESULTS if level == "FAIL"]
@@ -264,6 +268,47 @@ def check_fail_closed(base_url: str, env: str) -> None:
                "无令牌 → HTTP 200：任何人都能读走观测数据；生产部署前必须改成 403")
     else:
         report("WARN", "8. 指标端点返回异常（TD-01）", f"无令牌 → HTTP {status}，需人工确认")
+
+
+def check_service_guard(base_url: str, secret: str) -> None:
+    """`/v1/*` 的接口级鉴权是否生效（TD-02 的现场判据）。
+
+    拿 `/v1/plan/intent` 当探针：它不调模型（规则判定），打到 403 就返回，
+    所以这个检查既快又不花钱。
+
+    判词分三层，因为"200"在不同配置下含义完全不同：
+    - 403 → 闸门生效，最理想；
+    - 200 且本地配了密钥 → 闸门没生效（旧版本或中间件没注册），FAIL；
+    - 200 且本地没配密钥 → dev 回环放行，这是设计过的口子，报 WARN 让人知情。
+    """
+    url = f"{base_url}/v1/plan/intent"
+    payload = json.dumps({"messages": [{"role": "user", "content": "ping"}]}).encode("utf-8")
+    request = urllib.request.Request(
+        url, data=payload, method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            status = response.status
+    except urllib.error.HTTPError as e:
+        status = e.code
+    except Exception as e:                              # noqa: BLE001
+        report("WARN", "9. 无法核验业务接口鉴权（TD-02）", f"{base_url}：{type(e).__name__}")
+        return
+
+    if status in (401, 403):
+        report("OK", "9. 业务接口需要内部令牌（TD-02 关闭）",
+               f"无令牌访问 /v1/plan/intent → HTTP {status}")
+    elif status == 200 and secret:
+        report("FAIL", "9. 业务接口无鉴权（TD-02）",
+               "本地配了密钥，但无令牌仍能调通 /v1/plan/intent —— "
+               "闸门没生效，服务可能是旧版本或中间件没注册")
+    elif status == 200:
+        report("WARN", "9. 业务接口对回环来源放行（dev 模式）",
+               "本地未配密钥，代码退化为只放行回环来源；"
+               "生产（APP_ENV=prod）会强制 403，但 dev 下确实没人挡")
+    else:
+        report("WARN", "9. 业务接口返回异常（TD-02）", f"HTTP {status}，需人工确认")
 
 
 if __name__ == "__main__":

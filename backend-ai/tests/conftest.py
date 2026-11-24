@@ -14,7 +14,28 @@
 
 import os
 
+import pytest
+
 os.environ["LLM_PROVIDER"] = "mock"
 os.environ["LLM_API_KEY"] = ""
 os.environ["LLM_BASE_URL"] = "http://127.0.0.1:1"
 os.environ["LLM_MODEL"] = "mock"
+
+
+@pytest.fixture(autouse=True)
+def _testclient_counts_as_loopback(monkeypatch):
+    """让 `TestClient` 在接口鉴权眼里等同于本机回环（TD-02 之后的适配）。
+
+    `TestClient` 构造的 ASGI scope 里 TCP 对端是 `("testclient", 50000)`，
+    既不是 `127.x` 也不是 `::1`。接口鉴权要求"未配密钥时只放行回环来源"，
+    于是所有走 `TestClient` 的存量用例都会被判成"外部调用"而 403——
+    这不是回归，是测试设施与真实部署形态不匹配。
+
+    所以这里把来源判定短路为真，让存量用例保持原来的语义。
+    鉴权本身的行为（配了密钥的三档、prod fail-closed、非回环拒绝）由
+    `tests/test_service_guard.py` 直接对 `_loopback` / `decide` 断言，
+    并在需要真实来源判定时把 `is_loopback` 换回 `_loopback`。
+    """
+    from app.tools import service_guard
+
+    monkeypatch.setattr(service_guard, "is_loopback", lambda host: True)
