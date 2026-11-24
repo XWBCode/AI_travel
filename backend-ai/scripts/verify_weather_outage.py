@@ -128,8 +128,10 @@ def assert_circuit(py_series: list[dict], calls_at_start: int) -> None:
 
     这里踩过一个坑，值得写下来：第一版把「耗时 < 500ms」当作"熔断返回"的判据，
     结果假红了两次。原因是注入的 500 在内存里直接抛，一样是毫秒级——
-    **真失败和熔断返回从外部完全同形**（reason 同为 UPSTREAM_ERROR）。
-    唯一的区别是"这次请求有没有真的打到上游"，所以判据只能是调用计数。
+    **真失败和熔断返回从外部几乎同形**（本场跑的时候 reason 还同为 UPSTREAM_ERROR；
+    之后新增了 CIRCUIT_OPEN 才把两者分开，见 verify_circuit_open_reason.py）。
+    即使现在 reason 分开了，本脚本仍然用调用计数当判据：reason 是产品语义，
+    调用计数才是"有没有出网"的事实，后者不会因为文案/枚举调整而失效。
 
     第二个坑：探测次数最初写成"统计 calls > 熔断时基线的样本数"，
     那会把探测之后的每一次请求都算成一次探测（13 次）。
@@ -304,9 +306,10 @@ def scenario_outage(total_seconds: int = 600) -> int:
     #
     # 判据必须用「上游调用计数是否增长」，不能用「耗时短」。
     # 第一版就是用耗时 < 500ms 当"熔断返回"的判据，结果两条断言假红：
-    # 注入的 500 是内存里直接抛的，同样 < 500ms —— 真失败与熔断返回从外部**完全同形**
-    # （这正是设计 §6.1 预告的问题：两者 reason 一样、耗时相近，运维分不出是"上游挂了"
-    #   还是"我们在保护自己"）。只有"这次请求有没有真的打到上游"能区分。
+    # 注入的 500 是内存里直接抛的，同样 < 500ms —— 真失败与熔断返回从外部几乎同形
+    # （这正是设计 §6.1 预告的问题：运维分不出是"上游挂了"还是"我们在保护自己"；
+    #   后来新增 CIRCUIT_OPEN 把两者分开，但本脚本的回答仍只认调用计数——
+    #   那才是"有没有出网"的事实）。
     assert_circuit(py_series, calls_at_outage_start)
 
     record("P5 全程 Java 健康检查均 200", all(j for j, _ in health_checks), f"{sum(1 for j, _ in health_checks if j)}/{len(health_checks)}")
