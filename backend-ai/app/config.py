@@ -126,7 +126,10 @@ class WeatherSettings:
 class Settings:
     app_name: str = "ai-travel-ai-service"
     version: str = "0.1.0"
-    host: str = "0.0.0.0"
+    # 默认只监听回环。这一层服务对同机 Java 提供内部接口、自身没有任何接口级鉴权，
+    # 一旦监听全网卡就等于把这些接口开放给同一网段。要对外必须显式覆盖
+    # AI_SERVICE_HOST / config.yaml，让"对外开放"变成一个看得见的动作。
+    host: str = "127.0.0.1"
     port: int = 8000
     # 运行环境：dev | test | prod（由 APP_ENV 显式声明）。
     # 默认空串而不是 dev：空串代表「没人声明过」，用于让数据源合规闸门 fail-closed。
@@ -229,7 +232,7 @@ class Settings:
         return cls(
             app_name=str(app_raw.get("name", "ai-travel-ai-service")),
             version=str(app_raw.get("version", "0.1.0")),
-            host=str(_env("AI_SERVICE_HOST", server.get("host", "0.0.0.0"))),
+            host=str(_env("AI_SERVICE_HOST", server.get("host", "127.0.0.1"))),
             port=int(_env("AI_SERVICE_PORT", server.get("port", 8000))),
             env=env,
             internal_secret=str(_env("AI_INTERNAL_SECRET", "") or ""),
