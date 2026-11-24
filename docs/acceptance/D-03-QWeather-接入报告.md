@@ -37,7 +37,7 @@
 | `app/config.py` / `config/config.yaml`（改） | 新增 `qweather_*` 凭据项、熔断参数；`cache_ttl_minutes` 30 → 60 |
 | `app/routers/weather.py`（改） | `days` 上限 16 → 10；把配置透传给 provider |
 | `requirements.txt`（改） | 新增 `PyJWT==2.10.1`、`cryptography==44.0.0` |
-| `scripts/verify_weather_qweather.py`（新） | 真实联调脚本，7 项检查，**无凭据时返回退出码 2 而不是 0** |
+| `scripts/verify_weather_qweather.py`（新） | 真实联调脚本，12 项检查（原 7 项，第 7 项拆成 7a/7b/7c），**无凭据时返回退出码 2 而不是 0** |
 
 ### Java（只改了 4 处，全是 PM 点名的）
 
