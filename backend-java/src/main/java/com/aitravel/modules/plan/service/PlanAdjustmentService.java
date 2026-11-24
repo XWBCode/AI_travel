@@ -166,7 +166,7 @@ public class PlanAdjustmentService {
         requireAdjustable(plan);
 
         Snapshot snapshot = loadSnapshot(plan);
-        JsonNode data = aiServiceClient.adjustPlan(snapshot.aiView(), text, traceId);
+        JsonNode data = aiServiceClient.adjustPlan(snapshot.aiView(), text, traceId, userId);
         String summary = text(data.path("summary"), "行程调整建议");
 
         List<AdjustmentOps.Op> ops;

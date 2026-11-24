@@ -35,6 +35,15 @@ public class AiServiceProperties {
     private int adjustTimeoutMs = 180000;
 
     /**
+     * Java ⇄ Python 的内部共享密钥（M3-3 · S5），只用于给"灰度身份"签名。
+     * <p>
+     * 空串是刻意的默认值：没有密钥就发不出可信身份，Python 侧一律按"身份不可信"处理，
+     * 灰度对所有人生效地关闭——安全的默认，不是配置遗漏。
+     * <b>不放 config.yaml 的具体值</b>，只留 {@code ${AI_INTERNAL_SECRET:}} 占位。
+     */
+    private String internalSecret = "";
+
+    /**
      * 流式对话线程数。
      * <p>
      * 实测（2026-11-23，v4-pro）：8 并发全部成功，P50 132.7s，比串行的 127.4s 只多 4%；

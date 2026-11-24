@@ -62,6 +62,9 @@ app:
     stream-queue-capacity: 0
     # 天气查询上限（M3-1）：页面附属信息，慢到 5s 就该降级，不复用 300s 的流式读超时
     weather-timeout-ms: 5000
+    # 灰度身份签名密钥（M3-3 · S5）：Java 用它给 X-User-Id 签 HMAC，Python 用同一个值验签。
+    # 空 = 不发身份头 = 灰度不生效。生产务必与 Python 的 AI_INTERNAL_SECRET 同值。
+    internal-secret: ${AI_INTERNAL_SECRET:}
   weather:
     # none | qweather | open-meteo。默认 none 是刻意的，不是「还没配」：
     # 天气是外部依赖，没显式打开就不能默默调上游（W-8 合规 + 别把可用性交给别人）。

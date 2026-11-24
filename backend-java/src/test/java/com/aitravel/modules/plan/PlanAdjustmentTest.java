@@ -269,7 +269,7 @@ class PlanAdjustmentTest {
         assertEquals(1, count("select count(*) from t_plan_adjustment where plan_id = ?", planId),
                 "用户连点两次不该产生两条待确认建议");
         // 真正的证明：模型只被问了一次。落库条数对上但模型跑两次，说明幂等键占了又没拦住调用
-        verify(aiServiceClient, times(1)).adjustPlan(any(), any(), any());
+        verify(aiServiceClient, times(1)).adjustPlan(any(), any(), any(), any());
     }
 
     @Test
@@ -358,7 +358,7 @@ class PlanAdjustmentTest {
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }
-        when(aiServiceClient.adjustPlan(any(), any(), any())).thenReturn(data);
+        when(aiServiceClient.adjustPlan(any(), any(), any(), any())).thenReturn(data);
     }
 
     private String firstChangeBefore(PlanAdjustmentVO vo) {

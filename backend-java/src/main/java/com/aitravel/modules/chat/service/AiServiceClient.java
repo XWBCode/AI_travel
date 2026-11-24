@@ -16,6 +16,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
@@ -52,6 +54,8 @@ public class AiServiceClient {
     private final Duration adjustTimeout;
     /** 天气查询上限（M3-1）：页面附属信息，慢到 5s 就该降级 */
     private final Duration weatherTimeout;
+    /** 灰度身份签名密钥（M3-3 · S5）：空串 = 不发身份头，Python 侧按"不可信"处理 */
+    private final String internalSecret;
 
     public AiServiceClient(com.aitravel.common.config.AiServiceProperties props) {
         this.baseUrl = props.getBaseUrl();
@@ -59,6 +63,7 @@ public class AiServiceClient {
         this.planTimeout = Duration.ofMillis(props.getPlanTimeoutMs());
         this.adjustTimeout = Duration.ofMillis(props.getAdjustTimeoutMs());
         this.weatherTimeout = Duration.ofMillis(props.getWeatherTimeoutMs());
+        this.internalSecret = props.getInternalSecret() == null ? "" : props.getInternalSecret();
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(props.getConnectTimeoutMs()))
                 // SSE 走 HTTP/1.1：明文 HTTP/2 升级（h2c）对 uvicorn 无意义，只会让对端收到畸形请求
@@ -185,9 +190,10 @@ public class AiServiceClient {
      *
      * @param planView    {@code {title,totalDays,days:[{dayIndex,date,city,theme,items:[...]}]}}
      * @param instruction 用户原话
+     * @param userId      当前登录用户（仅用于灰度身份签名，不进入请求体）
      * @return Python 返回的 {@code data} 节点：{@code summary / ops}
      */
-    public JsonNode adjustPlan(JsonNode planView, String instruction, String traceId) {
+    public JsonNode adjustPlan(JsonNode planView, String instruction, String traceId, Long userId) {
         String json;
         try {
             json = objectMapper.writeValueAsString(Map.of("instruction", instruction, "plan", planView));
@@ -196,13 +202,23 @@ public class AiServiceClient {
                     com.aitravel.common.api.ErrorCode.BAD_REQUEST, "调整请求序列化失败");
         }
 
-        HttpRequest request = HttpRequest.newBuilder()
+        String safeTrace = traceId == null ? "" : traceId;
+        HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + "/v1/plan/adjust"))
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
-                .header("X-Trace-Id", traceId == null ? "" : traceId)
+                .header("X-Trace-Id", safeTrace)
                 // 比生成短：调整只改几项，输出远小于整份计划；默认 180s，可配
-                .timeout(adjustTimeout)
+                .timeout(adjustTimeout);
+        // 灰度身份（M3-3 · S5）：只在配了密钥且拿得到 userId 时才发。
+        // 两个头必须成对出现——只发 X-User-Id 等于给对方一个可被冒用的字符串，
+        // Python 侧也会因为缺签名直接判为不可信。
+        String identitySig = userId == null ? "" : signIdentity(userId, safeTrace);
+        if (!identitySig.isEmpty()) {
+            builder.header("X-User-Id", String.valueOf(userId))
+                    .header("X-Identity-Sig", identitySig);
+        }
+        HttpRequest request = builder
                 .POST(HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8))
                 .build();
 
@@ -417,5 +433,34 @@ public class AiServiceClient {
             default -> log.debug("忽略未知 SSE 事件: name={} data={}", eventName, rawData);
         }
         return false;
+    }
+
+    /**
+     * 灰度身份签名：{@code HMAC-SHA256(secret, "<userId>|<traceId>")} 的小写十六进制。
+     * <p>
+     * 与 Python 侧 {@code inject_gate.sign} 必须逐字同算法——这是跨语言的协议，
+     * 改一边不改另一边，灰度会静默地对所有人关闭（而不是报错）。
+     *
+     * @return 签名为空串表示"发不出可信身份"（没配密钥或算法异常），调用方应不发头
+     */
+    private String signIdentity(Long userId, String traceId) {
+        if (internalSecret.isBlank()) {
+            return "";
+        }
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(internalSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            byte[] digest = mac.doFinal((userId + "|" + traceId).getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                hex.append(Character.forDigit((b >> 4) & 0xF, 16));
+                hex.append(Character.forDigit(b & 0xF, 16));
+            }
+            return hex.toString();
+        } catch (Exception e) {
+            // 签不出来就**不发**，让 Python 判为不可信：宁可灰度不生效，不可发出一个假身份
+            log.warn("灰度身份签名失败，本次不发送身份头: {}", e.getClass().getSimpleName());
+            return "";
+        }
     }
 }

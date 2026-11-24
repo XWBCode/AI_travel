@@ -273,7 +273,7 @@ class NotificationTest {
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }
-        when(aiServiceClient.adjustPlan(any(), any(), any())).thenReturn(data);
+        when(aiServiceClient.adjustPlan(any(), any(), any(), any())).thenReturn(data);
     }
 
     private int version(long planId) {
