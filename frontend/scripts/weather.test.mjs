@@ -20,6 +20,7 @@ import {
   reasonText,
   relativeTime,
   sourceLine,
+  staleReasonText,
   staleText,
   toRows,
 } from '../src/utils/weather.ts'
@@ -152,6 +153,45 @@ check('链接锚文本就是后端给的原文', attributionText({ ...OK, attrib
 
 check('旧值必须标出来', staleText({ ...OK, stale: true }).includes('上次'), true)
 check('不是旧值就不加这句', staleText(OK), '')
+
+// ---------------- 旧值 + 刷新失败原因 ----------------
+//
+// 「这是上次的数据」和「为什么没更新」是两件事。只说前者，用户分不出是上游坏了
+// 还是我们自己把请求停了——那正是 M3-2 暂缓的理由（故障状态没闭环）。
+check('旧值提示不再说"正在尝试更新"', staleText({ ...OK, stale: true }), '数据为上次成功获取的结果')
+check(
+  '旧值 + 熔断：说明是我们主动停的',
+  staleReasonText({ ...OK, stale: true, reason: 'CIRCUIT_OPEN' }),
+  '本次刷新失败：天气服务连续异常，已暂停刷新，稍后会自动恢复',
+)
+check(
+  '旧值 + 真实上游故障：说明数据还在、只是不新',
+  staleReasonText({ ...OK, stale: true, reason: 'UPSTREAM_ERROR' }),
+  '本次刷新失败：天气服务暂时不可用，正在保留上次数据',
+)
+check(
+  '两种失败在旧值场景下也必须说不同的话',
+  staleReasonText({ ...OK, stale: true, reason: 'CIRCUIT_OPEN' }) !==
+    staleReasonText({ ...OK, stale: true, reason: 'UPSTREAM_ERROR' }),
+  true,
+)
+check('不是旧值就不解释刷新失败', staleReasonText({ ...OK, reason: 'CIRCUIT_OPEN' }), '')
+check('旧值但没有原因：不硬编一句', staleReasonText({ ...OK, stale: true, reason: null }), '')
+check(
+  '原因只认结构化 reason，不从 note 里抠英文枚举',
+  staleReasonText({
+    ...OK,
+    stale: true,
+    reason: null,
+    note: '数据为上次成功获取的结果（本次刷新失败：CIRCUIT_OPEN）',
+  }),
+  '',
+)
+check(
+  'note 里写什么都不影响文案（防止有人回头去解析 note）',
+  staleReasonText({ ...OK, stale: true, reason: 'CIRCUIT_OPEN', note: '本次刷新失败：UPSTREAM_ERROR' }),
+  '本次刷新失败：天气服务连续异常，已暂停刷新，稍后会自动恢复',
+)
 
 // 城市别名说明：有就显示，刷新失败的说明不在城市说明里重复
 check('别名说明会显示', cityNote({ ...OK, note: '按省会昆明代表云南' }), '按省会昆明代表云南')

@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -268,6 +269,50 @@ class PlanWeatherServiceTest {
         assertEquals(1, vo.getDays().size());
         assertEquals("12–16℃", vo.getDays().get(0).getTemperature().path("display").asText());
         assertTrue(vo.getNote().contains("上次"), "note 要说明这是上次成功获取的结果：" + vo.getNote());
+    }
+
+    @Test
+    @DisplayName("旧值 + 熔断：reason 变成 CIRCUIT_OPEN，用户能看出是我们主动停的")
+    void weather_staleCarriesRefreshFailureReason() throws Exception {
+        when(store.loadOwned(PLAN_ID, USER_ID)).thenReturn(plan(START, "成都", 3));
+        when(aiServiceClient.fetchWeather(anyString(), anyString(), anyInt(), any()))
+                .thenReturn(okJson());
+        PlanWeatherVO cachedCopy = service.weather(PLAN_ID, USER_ID, "t-1");
+
+        service.seedExpired(cachedCopy, PLAN_ID, START, 3, "成都");
+        when(aiServiceClient.fetchWeather(anyString(), anyString(), anyInt(), any()))
+                .thenReturn(MAPPER.readTree("""
+                        {"ok": false, "reason": "CIRCUIT_OPEN", "message": "天气服务连续异常，已暂停刷新，稍后会自动恢复"}
+                        """));
+
+        PlanWeatherVO vo = service.weather(PLAN_ID, USER_ID, "t-2");
+
+        assertTrue(vo.isAvailable(), "旧值还在，不是「没有天气」");
+        assertTrue(vo.isStale());
+        // 这一条是本切片的全部意义：旧值场景下原因也必须能到达界面
+        assertEquals("CIRCUIT_OPEN", vo.getReason(),
+                "stale 时 reason 要说明本次刷新为什么失败，前端按它选文案");
+        assertNull(vo.getMessage(),
+                "message 不设：stale 那句人话由前端 WEATHER_STALE_REASON_TEXT 统一管理，"
+                        + "Java 再写一份就是两个文案来源");
+    }
+
+    @Test
+    @DisplayName("旧值 + 上游真失败：reason 仍是 UPSTREAM_ERROR，与熔断区分开")
+    void weather_staleDistinguishesUpstreamErrorFromCircuitOpen() throws Exception {
+        when(store.loadOwned(PLAN_ID, USER_ID)).thenReturn(plan(START, "成都", 3));
+        when(aiServiceClient.fetchWeather(anyString(), anyString(), anyInt(), any()))
+                .thenReturn(okJson());
+        PlanWeatherVO cachedCopy = service.weather(PLAN_ID, USER_ID, "t-1");
+
+        service.seedExpired(cachedCopy, PLAN_ID, START, 3, "成都");
+        when(aiServiceClient.fetchWeather(anyString(), anyString(), anyInt(), any())).thenReturn(null);
+
+        PlanWeatherVO vo = service.weather(PLAN_ID, USER_ID, "t-2");
+
+        assertTrue(vo.isStale());
+        assertEquals("UPSTREAM_ERROR", vo.getReason());
+        assertNotEquals("CIRCUIT_OPEN", vo.getReason());
     }
 
     @Test

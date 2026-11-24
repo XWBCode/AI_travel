@@ -30,6 +30,19 @@ export const WEATHER_REASON_TEXT: Record<string, string> = {
 
 const FALLBACK_REASON_TEXT = '天气暂不可用'
 
+/**
+ * `stale=true` 时「本次刷新为什么失败」。
+ *
+ * 和上面那张表分开，是因为**同一件事在两种场景下要说不同的话**：
+ * 降级时"没有天气"，用户只能等；stale 时旧数据还在，用户至少知道现在看到的是什么。
+ * 所以这里只覆盖语气需要变的那几条，其余继续用 `WEATHER_REASON_TEXT` 兜底，
+ * 不重复维护一份完整枚举——两处各写一遍，早晚会不一致。
+ */
+export const WEATHER_STALE_REASON_TEXT: Record<string, string> = {
+  UPSTREAM_ERROR: '天气服务暂时不可用，正在保留上次数据',
+  CIRCUIT_OPEN: '天气服务连续异常，已暂停刷新，稍后会自动恢复',
+}
+
 /** `attribution` 为空时的兜底署名。不写具体 provider，避免换源后变成假话 */
 export const ATTRIBUTION_FALLBACK = '天气数据由第三方服务提供'
 
@@ -153,9 +166,24 @@ export function relativeTime(iso?: string | null, now: Date = new Date()): strin
 
 /**
  * 旧值提示。`stale=true` 时必须出现——不标就是把上次的数据冒充成这次的。
+ *
+ * 只说「这是上次的结果」，不再说「正在尝试更新」：熔断期间我们根本没有出网，
+ * 写"正在尝试更新"就是一句假话。刷新为什么失败由 {@link staleReasonText} 单独说。
  */
 export function staleText(vo?: PlanWeatherVO | null): string {
-  return vo?.stale ? '数据为上次成功获取的结果，正在尝试更新' : ''
+  return vo?.stale ? '数据为上次成功获取的结果' : ''
+}
+
+/**
+ * 旧值 + 刷新失败原因，例如「本次刷新失败：天气服务连续异常，已暂停刷新，稍后会自动恢复」。
+ *
+ * 读的是结构化 `reason`，**不从 `note` 里抠英文枚举**——note 的格式随时可能改，
+ * 而且英文枚举不是给人看的。返回空串表示这条信息不该出现，调用方直接不渲染。
+ */
+export function staleReasonText(vo?: PlanWeatherVO | null): string {
+  if (!vo?.stale || !vo.reason) return ''
+  const text = WEATHER_STALE_REASON_TEXT[vo.reason] ?? WEATHER_REASON_TEXT[vo.reason]
+  return text ? `本次刷新失败：${text}` : ''
 }
 
 /** 城市别名说明（「按省会昆明代表云南」），有就显示，没有不占位 */

@@ -30,6 +30,15 @@ public class PlanWeatherVO {
 
     private boolean available;
 
+    /**
+     * 原因。同一个字段承担两件事，靠 {@code available} / {@code stale} 区分场景：
+     * <ul>
+     *   <li>{@code available=false}：为什么这块没有天气；</li>
+     *   <li>{@code stale=true}：数据仍是上次的旧值，这里说明<b>本次刷新为什么失败</b>。
+     *       不是"没有天气"——旧值还在，只是不新了。</li>
+     * </ul>
+     * 前端按 reason 选文案，不从 {@code note} 里解析英文枚举。
+     */
     private String reason;
 
     private String message;

@@ -8,6 +8,7 @@ import {
   cityNote,
   reasonText,
   relativeTime,
+  staleReasonText,
   staleText,
   toRows,
 } from '@/utils/weather'
@@ -45,6 +46,11 @@ const attribution = computed(() => attributionText(props.weather))
 const attributionHref = computed(() => attributionUrl(props.weather?.attribution))
 const updated = computed(() => relativeTime(props.weather?.fetchedAt))
 const stale = computed(() => staleText(props.weather))
+/**
+ * 旧值 + 刷新失败原因。这一条是「为什么没更新」的答案：
+ * 只说"这是上次的数据"而不说为什么，用户还是不知道是上游坏了还是我们主动停了。
+ */
+const staleReason = computed(() => staleReasonText(props.weather))
 const note = computed(() => cityNote(props.weather))
 </script>
 
@@ -88,6 +94,7 @@ const note = computed(() => cityNote(props.weather))
           <template v-if="updated"> · 更新于{{ updated }}</template>
         </span>
         <span v-if="stale" class="weather-stale">{{ stale }}</span>
+        <span v-if="staleReason" class="weather-stale">{{ staleReason }}</span>
         <span v-if="note" class="weather-note">{{ note }}</span>
       </div>
     </template>

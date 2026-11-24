@@ -204,6 +204,11 @@ public class PlanWeatherService {
         vo.setFetchedAt(old.getFetchedAt());
         vo.setExpiresAt(old.getExpiresAt());
         vo.setDays(old.getDays());
+        // 「本次刷新为什么失败」放进结构化 reason，前端按它选文案。
+        // 不解析 note 里的英文枚举——那是给排障看的，不是给界面用的。
+        // 也**不设 message**：stale 场景那句人话由前端 WEATHER_STALE_REASON_TEXT 统一管理，
+        // Java 再写一份就又变成两个文案来源（PM：文案只有一个来源）。
+        vo.setReason(fresh.getReason());
         String reason = "数据为上次成功获取的结果（本次刷新失败：" + fresh.getReason() + "）";
         vo.setNote(old.getNote() == null || old.getNote().isBlank() ? reason : old.getNote() + "；" + reason);
         return vo;

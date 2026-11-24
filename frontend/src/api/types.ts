@@ -398,6 +398,13 @@ export interface PlanWeatherDay {
  */
 export interface PlanWeatherVO {
   available: boolean
+  /**
+   * 原因。同一个字段两用，靠 `available` / `stale` 区分场景：
+   * - `available=false`：为什么这块没有天气
+   * - `stale=true`：数据仍是旧值，这里说明**本次刷新为什么失败**
+   *
+   * 展示层只认这个字段，不要从 `note` 里解析英文枚举。
+   */
   reason?: WeatherReason | string | null
   message?: string | null
   source?: string | null
