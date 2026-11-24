@@ -138,6 +138,19 @@ def main() -> int:
     else:
         report("WARN", "7. 未核对运行中的服务", "加 --url http://host:port 可以确认服务侧配置与这份一致")
 
+    # ---------------------------------------------------------------- 8 fail-open
+    # 第 8 项不是"灰度能不能跑"，而是"这个服务会不会被人白拿"。
+    # 指标端点在密钥为空时**不做任何校验**（TD-01），灰度关着的时候它照样能读。
+    # 所以它必须和 G1 一样有门槛：生产部署前必须 fail-closed。
+    if not settings.internal_secret:
+        report("FAIL", "8. 指标端点会 fail-open（TD-01）",
+               "AI_INTERNAL_SECRET 为空时 /v1/internal/* 不校验令牌，任何人都能读走观测数据")
+    elif args.url:
+        check_fail_closed(args.url.rstrip("/"), env)
+    else:
+        report("WARN", "8. 未核验指标端点是否 fail-closed（TD-01）",
+               "加 --url 可实测；TD-01 未修前不得用于生产")
+
     # ---------------------------------------------------------------- 汇总
     failed = [item for level, item, _ in RESULTS if level == "FAIL"]
     warned = [item for level, item, _ in RESULTS if level == "WARN"]
@@ -175,10 +188,60 @@ def check_service(base_url: str, secret: str) -> None:
     if missing:
         report("FAIL", "7. 指标结构不符", f"缺 {sorted(missing)}：服务可能还是旧版本")
         return
-    report("OK", "7. 服务侧密钥一致且指标可用",
+    # 这里只说明"带令牌能读到"，是否"真的校验了令牌"由 7.2 用错令牌去证。
+    report("OK", "7. 指标端点可读（带令牌）",
            f"gray.allowed={data['gray']['allowed']}，outcome={data['outcome'] or '{}'}")
+
+    # 只验证"对的令牌能进"是不够的：服务端要是压根不校验，任何令牌都能进，
+    # 上面这行就会把"两端都没配密钥"误报成"密钥一致"。所以再拿一个错令牌试一次。
+    if secret:
+        bogus = secret + "-definitely-wrong"
+        wrong = urllib.request.Request(url, headers={"X-Internal-Token": bogus})
+        try:
+            with urllib.request.urlopen(wrong, timeout=5) as response:
+                wrong_status = response.status
+        except urllib.error.HTTPError as e:
+            wrong_status = e.code
+        except Exception as e:                          # noqa: BLE001
+            report("WARN", "7.2 错令牌探测失败", f"{type(e).__name__}")
+            wrong_status = None
+        if wrong_status in (401, 403):
+            report("OK", "7.2 错令牌被拒绝", f"HTTP {wrong_status}：服务端确实在校验令牌")
+        elif wrong_status == 200:
+            report("FAIL", "7.2 错令牌也被放行",
+                   "服务端根本没校验令牌（多半是 AI_INTERNAL_SECRET 没配到服务端）："
+                   "第 7 项的\"可读\"不能当作密钥一致，灰度身份也不可信")
     if data["gray"]["allowed"] and not data["outcome"]:
         report("WARN", "7.1 有放行但无结果计数", "说明计数写入点没生效，检查是否旧版本")
+
+
+def check_fail_closed(base_url: str, env: str) -> None:
+    """不带令牌去读指标端点，看服务是拒绝还是放行。
+
+    这是 TD-01 的现场判据：
+    - 403 = 已经 fail-closed（修好了）；
+    - 200 = 仍然 fail-open，任何人都能读走观测数据。
+    """
+    url = f"{base_url}/v1/internal/metrics/weather-adjust"
+    try:
+        with urllib.request.urlopen(url, timeout=5) as response:
+            status = response.status
+    except urllib.error.HTTPError as e:
+        status = e.code
+    except Exception as e:                              # noqa: BLE001
+        report("WARN", "8. 无法核验指标端点（TD-01）", f"{base_url}：{type(e).__name__}")
+        return
+
+    if status in (401, 403):
+        report("OK", "8. 指标端点拒绝无令牌请求",
+               f"无令牌 → HTTP {status}。注意：这只证明“配了密钥时会拒绝”，"
+               f"密钥为空时仍会放行（TD-01 未修，修法见技术债登记）")
+    elif status == 200:
+        level = "FAIL" if env in ("prod", "production") else "WARN"
+        report(level, "8. 指标端点仍是 fail-open（TD-01）",
+               "无令牌 → HTTP 200：任何人都能读走观测数据；生产部署前必须改成 403")
+    else:
+        report("WARN", "8. 指标端点返回异常（TD-01）", f"无令牌 → HTTP {status}，需人工确认")
 
 
 if __name__ == "__main__":
