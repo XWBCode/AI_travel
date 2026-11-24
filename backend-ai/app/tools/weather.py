@@ -45,6 +45,7 @@ from app.tools.weather_reasons import (  # noqa: F401  —— R_* 由本模块�
     ALL_REASONS,
     MESSAGES,
     R_CITY_UNKNOWN,
+    R_CIRCUIT_OPEN,
     R_DATE_OUT_OF_RANGE,
     R_NO_CITY,
     R_NO_START_DATE,
@@ -416,9 +417,12 @@ async def fetch_forecast(
     )
     now_ts = now.timestamp()
     if not breaker.allow(now_ts):
-        # 熔断期间不发请求：官方明确写了持续错误请求可能冻结账号
-        logger.warning("天气熔断中 provider=%s city=%s", provider, coord.city)
-        return _fail(R_UPSTREAM_ERROR, "天气服务暂时不可用")
+        # 熔断期间不发请求：官方明确写了持续错误请求可能冻结账号。
+        # reason 用 CIRCUIT_OPEN 而不是 UPSTREAM_ERROR：**这里根本没出网**，
+        # 上游这一轮有没有好都不知道。报成"上游错误"会让运维去查一个没被碰过的接口
+        # （详见 weather_reasons 模块文档）
+        logger.warning("天气熔断中，本次未访问上游 provider=%s city=%s", provider, coord.city)
+        return _fail(R_CIRCUIT_OPEN)
 
     try:
         result = await module.fetch(

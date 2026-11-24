@@ -15,7 +15,12 @@ import java.util.List;
  *
  * <p>{@code reason} 取值与 Python 侧枚举逐字一致：
  * {@code PROVIDER_DISABLED / NO_START_DATE / NO_CITY / CITY_UNKNOWN / DATE_OUT_OF_RANGE /
- * UPSTREAM_TIMEOUT / UPSTREAM_ERROR}。
+ * UPSTREAM_TIMEOUT / UPSTREAM_ERROR / CIRCUIT_OPEN}。
+ *
+ * <p>其中 {@code UPSTREAM_ERROR} 与 {@code CIRCUIT_OPEN} 必须分开：
+ * 前者是本次请求<b>真的出网了</b>、上游失败；后者是熔断器已打开、本次<b>没有出网</b>，
+ * 属于保护系统的主动拒绝。两者都是毫秒级返回、都是 {@code available=false}，
+ * 从外部看完全同形，所以判据只能是「有没有发请求」，不能看耗时。
  *
  * <p>{@code stale=true} 表示「缓存过期且上游这次没刷新成功，给你的是上次的旧值」。
  * 这种情况下照常展示数据，但必须标出来——不标就是拿旧数据冒充当前数据。

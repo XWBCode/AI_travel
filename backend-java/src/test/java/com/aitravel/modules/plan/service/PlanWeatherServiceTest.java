@@ -224,6 +224,32 @@ class PlanWeatherServiceTest {
     }
 
     @Test
+    @DisplayName("熔断打开：CIRCUIT_OPEN 原样上去，不被折叠成 UPSTREAM_ERROR")
+    void weather_circuitOpenIsNotSwallowedIntoUpstreamError() throws Exception {
+        when(store.loadOwned(PLAN_ID, USER_ID)).thenReturn(plan(START, "成都", 3));
+        when(aiServiceClient.fetchWeather(anyString(), anyString(), anyInt(), any()))
+                .thenReturn(MAPPER.readTree("""
+                        {"ok": false, "reason": "CIRCUIT_OPEN", "message": "天气服务连续异常，已暂停刷新，稍后会自动恢复"}
+                        """));
+
+        PlanWeatherVO vo = service.weather(PLAN_ID, USER_ID, "t-1");
+
+        assertFalse(vo.isAvailable());
+        assertEquals("CIRCUIT_OPEN", vo.getReason());
+        assertNotEquals("UPSTREAM_ERROR", vo.getReason(),
+                "熔断是主动拒绝、没有出网；折叠成上游错误会把运维引到没被碰过的接口上");
+        assertEquals("天气服务连续异常，已暂停刷新，稍后会自动恢复", vo.getMessage());
+    }
+
+    @Test
+    @DisplayName("降级原因清单包含 CIRCUIT_OPEN，防止前端映射表漏一项")
+    void reasons_containCircuitOpen() {
+        assertTrue(PlanWeatherService.reasons().contains("CIRCUIT_OPEN"));
+        // 两项都在：一个都不能少，否则前端会落到兜底句
+        assertTrue(PlanWeatherService.reasons().contains("UPSTREAM_ERROR"));
+    }
+
+    @Test
     @DisplayName("缓存过期且上游挂掉：返回旧值并标 stale（W-5）")
     void weather_servesStaleValueWhenRefreshFails() throws Exception {
         when(store.loadOwned(PLAN_ID, USER_ID)).thenReturn(plan(START, "成都", 3));

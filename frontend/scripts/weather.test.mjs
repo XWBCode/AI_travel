@@ -57,6 +57,17 @@ check('未知原因落到兜底句而不是空白', reasonText('SOMETHING_NEW'),
 check('原因为空也落到兜底句', reasonText(null, null), '天气暂不可用')
 check('只有「缺日期」给用户操作入口', [canFixByUser('NO_START_DATE'), canFixByUser('DATE_OUT_OF_RANGE')], [true, false])
 
+// 熔断（CIRCUIT_OPEN）与上游失败（UPSTREAM_ERROR）必须说两句不同的话：
+// 前者是我们主动停的、会自己恢复；后者是上游真的坏了
+check('熔断有独立文案，不落兜底句', reasonText('CIRCUIT_OPEN') !== '天气暂不可用', true)
+check(
+  '熔断文案与上游错误不同',
+  reasonText('CIRCUIT_OPEN') !== reasonText('UPSTREAM_ERROR'),
+  true,
+)
+check('熔断说明会自己恢复，用户不用改设置', reasonText('CIRCUIT_OPEN').includes('自动恢复'), true)
+check('熔断不是用户能自己修的', canFixByUser('CIRCUIT_OPEN'), false)
+
 // ---------------- 字段展示 ----------------
 check('已核实照抄 display', fieldText(fact('12–16℃')), '12–16℃')
 check('未核实一律「暂无数据」', fieldText(fact('待核实', false)), '暂无数据')

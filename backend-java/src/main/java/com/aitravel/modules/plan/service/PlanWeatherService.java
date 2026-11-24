@@ -303,9 +303,15 @@ public class PlanWeatherService {
         return planId + "|" + startDate + "|" + days + "|" + city + "|" + requestDate;
     }
 
-    /** 供控制器/测试复用的降级原因清单，防止前后端文案对不上 */
+    /**
+     * 供控制器/测试复用的降级原因清单，防止前后端文案对不上。
+     *
+     * <p>{@code UPSTREAM_ERROR} 与 {@code CIRCUIT_OPEN} 是两件事，不能合并：前者是这次真的发了请求、
+     * 上游失败；后者是熔断器开着、这次根本没发请求，属于主动拒绝。判据只有「有没有出网」，
+     * 不能用耗时判断——两者都是毫秒级返回，从外部完全同形。
+     */
     public static List<String> reasons() {
         return List.of("PROVIDER_DISABLED", "NO_START_DATE", "NO_CITY", "CITY_UNKNOWN",
-                "DATE_OUT_OF_RANGE", "UPSTREAM_TIMEOUT", "UPSTREAM_ERROR");
+                "DATE_OUT_OF_RANGE", "UPSTREAM_TIMEOUT", "UPSTREAM_ERROR", "CIRCUIT_OPEN");
     }
 }

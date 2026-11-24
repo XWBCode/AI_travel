@@ -372,6 +372,8 @@ export type WeatherReason =
   | 'DATE_OUT_OF_RANGE'
   | 'UPSTREAM_TIMEOUT'
   | 'UPSTREAM_ERROR'
+  /** 熔断器已打开，本次没有访问上游——与 UPSTREAM_ERROR（出网了但失败）是两件事 */
+  | 'CIRCUIT_OPEN'
 
 /** 一天的天气：四组 FactField 原样来自后端，展示层只读 `display` / `verified` */
 export interface PlanWeatherDay {

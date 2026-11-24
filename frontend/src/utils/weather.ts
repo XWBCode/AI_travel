@@ -23,6 +23,9 @@ export const WEATHER_REASON_TEXT: Record<string, string> = {
   DATE_OUT_OF_RANGE: '出发日期超出预报范围，临近再看',
   UPSTREAM_TIMEOUT: '天气服务响应超时，稍后会自动重试',
   UPSTREAM_ERROR: '天气暂不可用',
+  // 与 UPSTREAM_ERROR 必须说不同的话：后者是上游坏了，这一条是**我们**主动停的，
+  // 而且会自己恢复。都写成"暂不可用"会让用户以为要去改什么设置
+  CIRCUIT_OPEN: '天气服务连续异常，已暂停刷新，稍后会自动恢复',
 }
 
 const FALLBACK_REASON_TEXT = '天气暂不可用'

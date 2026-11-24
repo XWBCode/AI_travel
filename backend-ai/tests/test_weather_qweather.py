@@ -30,7 +30,13 @@ from jsonschema import Draft202012Validator
 from app.config import WeatherSettings
 from app.plan.contract import load_schema
 from app.tools import weather, weather_circuit
-from app.tools.weather import R_PROVIDER_DISABLED, R_UPSTREAM_ERROR, R_UPSTREAM_TIMEOUT, fetch_forecast
+from app.tools.weather import (
+    R_CIRCUIT_OPEN,
+    R_PROVIDER_DISABLED,
+    R_UPSTREAM_ERROR,
+    R_UPSTREAM_TIMEOUT,
+    fetch_forecast,
+)
 from app.tools.weather_jwt import JwtConfigError, QWeatherTokenProvider
 from app.tools.weather_providers import qweather
 from app.tools.weather_providers.base import ProviderFailure
@@ -466,8 +472,35 @@ def test_breaker_opens_after_threshold_and_stops_calling_upstream():
 
     blocked = _fetch(transport=transport, settings=settings)
     assert blocked["ok"] is False
-    assert blocked["reason"] == R_UPSTREAM_ERROR
+    assert blocked["reason"] == R_CIRCUIT_OPEN
     assert len(calls) == 3, "熔断期间一个请求都不许发"
+
+
+def test_failed_request_and_blocked_request_have_different_reasons():
+    """同一个熔断器，出网失败与没出网必须给两个 reason。
+
+    这条是 A 项验证暴露出来的问题：两者都是毫秒级返回、都是 available=false，
+    从外部完全同形。判据只能是"这次有没有出网"。
+    """
+    calls: list = []
+    settings = _settings()
+    transport = _transport([(500, {})], calls=calls)
+
+    # 第 1 次：真的打了上游，拿回 500 → 归因于上游
+    first = _fetch(transport=transport, settings=settings)
+    assert first["reason"] == R_UPSTREAM_ERROR
+    assert len(calls) == 1
+
+    # 打到阈值，熔断打开
+    for _ in range(2):
+        _fetch(transport=transport, settings=settings)
+    assert weather_circuit.breaker_for("qweather").state == weather_circuit.OPEN
+
+    # 之后：请求没出门就被拦住 → 不能再说"上游错误"
+    blocked = _fetch(transport=transport, settings=settings)
+    assert blocked["reason"] == R_CIRCUIT_OPEN
+    assert len(calls) == 3
+    assert blocked["message"] != first["message"], "两种原因必须给用户不同的话"
 
 
 def test_hard_failure_opens_breaker_immediately():

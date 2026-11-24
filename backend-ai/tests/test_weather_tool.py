@@ -26,6 +26,7 @@ from jsonschema import Draft202012Validator
 from app.plan.contract import load_schema
 from app.tools import weather, weather_circuit
 from app.tools.weather import (
+    R_CIRCUIT_OPEN,
     R_CITY_UNKNOWN,
     R_DATE_OUT_OF_RANGE,
     R_NO_START_DATE,
@@ -289,6 +290,24 @@ def test_upstream_500_is_classified_as_error():
     result = _fetch(transport=_transport({"error": True}, status=500))
     assert result["ok"] is False
     assert result["reason"] == R_UPSTREAM_ERROR
+
+
+def test_blocked_by_breaker_is_circuit_open_not_upstream_error():
+    """熔断拦住的那一次**没有出网**，reason 必须是 CIRCUIT_OPEN。
+
+    这条和 provider 无关——分支在编排层，两个 provider 共用。
+    断言落在"调用次数没涨"上，不靠耗时：注入的失败也是毫秒级，两者从外部同形。
+    """
+    calls: list = []
+    transport = _transport({"error": True}, status=500, calls=calls)
+    for _ in range(3):
+        assert _fetch(transport=transport)["reason"] == R_UPSTREAM_ERROR
+    assert len(calls) == 3
+    assert weather_circuit.breaker_for("open-meteo").state == weather_circuit.OPEN
+
+    blocked = _fetch(transport=transport)
+    assert blocked["reason"] == R_CIRCUIT_OPEN
+    assert len(calls) == 3, "熔断期间禁止出网"
 
 
 def test_upstream_200_with_broken_shape_is_error_not_empty():
