@@ -10,7 +10,6 @@
 
 from __future__ import annotations
 
-import hmac
 import json
 import logging
 from typing import AsyncGenerator
@@ -24,7 +23,7 @@ from app.llm.provider import LLMError
 from app.plan.adjust import AdjustError, run_adjust
 from app.plan.generator import run_generation
 from app.plan.intent import analyze_messages
-from app.tools import adjust_metrics, inject_gate
+from app.tools import adjust_metrics, inject_gate, internal_auth
 
 logger = logging.getLogger("ai-travel.plan")
 
@@ -184,13 +183,11 @@ async def weather_adjust_metrics(request: Request):
     只读、无副作用、不含任何用户内容：只有计数、耗时与灰度判定结果。
     放在 `/v1/internal/*` 下是因为它**不是**给前端用的接口——运维与灰度观察才需要它。
 
-    配了 `AI_INTERNAL_SECRET` 时要求带 `X-Internal-Token`（同值）：指标本身不敏感，
-    但"这个服务对公网无鉴权"不该因为一个只读端点而变成默认事实。
+    鉴权是 **fail-closed**（TD-01，2026-11-24 修复）：未配 `AI_INTERNAL_SECRET` 时
+    直接 403，而不是"没密钥就放行"。原实现 `if secret:` 让"忘记配置"等价于"无需鉴权"，
+    在这台机器的真实运行态下就是无令牌可读。判据与取舍见 `app/tools/internal_auth.py`。
     """
-    secret = settings.internal_secret
-    if secret:
-        token = request.headers.get("x-internal-token", "")
-        if not hmac.compare_digest(token, secret):
-            return JSONResponse(status_code=403,
-                                content={"code": 40300, "message": "internal token required"})
+    denied = internal_auth.check(request.headers, settings.internal_secret)
+    if denied is not None:
+        return JSONResponse(status_code=403, content=denied)
     return {"code": 0, "message": "ok", "data": adjust_metrics.snapshot()}

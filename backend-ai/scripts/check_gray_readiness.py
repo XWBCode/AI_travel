@@ -138,18 +138,15 @@ def main() -> int:
     else:
         report("WARN", "7. 未核对运行中的服务", "加 --url http://host:port 可以确认服务侧配置与这份一致")
 
-    # ---------------------------------------------------------------- 8 fail-open
-    # 第 8 项不是"灰度能不能跑"，而是"这个服务会不会被人白拿"。
-    # 指标端点在密钥为空时**不做任何校验**（TD-01），灰度关着的时候它照样能读。
-    # 所以它必须和 G1 一样有门槛：生产部署前必须 fail-closed。
-    if not settings.internal_secret:
-        report("FAIL", "8. 指标端点会 fail-open（TD-01）",
-               "AI_INTERNAL_SECRET 为空时 /v1/internal/* 不校验令牌，任何人都能读走观测数据")
-    elif args.url:
+    # ---------------------------------------------------------------- 8 指标端点是否裸奔
+    # TD-01 修完之后（2026-11-24），"密钥为空"不再等于"端点裸奔"：
+    # 代码里是 fail-closed，没配密钥就直接 403，不再跳过校验。
+    # 所以这一项从"看配置推断"改成"实测优先"——能打一枪就别猜。
+    if args.url:
         check_fail_closed(args.url.rstrip("/"), env)
     else:
-        report("WARN", "8. 未核验指标端点是否 fail-closed（TD-01）",
-               "加 --url 可实测；TD-01 未修前不得用于生产")
+        report("WARN", "8. 未实测指标端点是否 fail-closed",
+               "代码已 fail-closed（TD-01 已关闭）；加 --url 可现场确认无令牌是否被拒")
 
     # ---------------------------------------------------------------- 汇总
     failed = [item for level, item, _ in RESULTS if level == "FAIL"]
@@ -169,6 +166,14 @@ def main() -> int:
 def check_service(base_url: str, secret: str) -> None:
     """核对运行中的服务：密钥是否同值、指标端点是否可达、四类计数是否在。"""
     url = f"{base_url}/v1/internal/metrics/weather-adjust"
+
+    # 本地没配密钥时，"带空令牌被拒"和"两端不一致"在 HTTP 层长得一模一样（都是 403）。
+    # 不先分流就会把"我自己没配"误报成"服务端配了别的"，把人带去错误的排障方向。
+    if not secret:
+        report("WARN", "7. 本地未配密钥，跳过服务侧核对",
+               "AI_INTERNAL_SECRET 为空时无法证明两端一致；先配密钥（见第 4 项）")
+        return
+
     request = urllib.request.Request(url, headers={"X-Internal-Token": secret})
     try:
         with urllib.request.urlopen(request, timeout=5) as response:
@@ -218,24 +223,41 @@ def check_service(base_url: str, secret: str) -> None:
 def check_fail_closed(base_url: str, env: str) -> None:
     """不带令牌去读指标端点，看服务是拒绝还是放行。
 
-    这是 TD-01 的现场判据：
-    - 403 = 已经 fail-closed（修好了）；
-    - 200 = 仍然 fail-open，任何人都能读走观测数据。
+    这是 TD-01 的现场判据。2026-11-24 修复后，两档 403 的含义不同，必须分开判：
+    - 403 + `code=40300`：配了密钥、且拒绝了无令牌请求 —— 理想态，TD-01 已关闭；
+    - 403 + `code=40301`：服务端没配密钥，端点同样拒绝 —— 端点不裸奔了，
+      但这个实例还不能参与灰度（第 4 项会挑出来），所以这里给 WARN 不给 OK；
+    - 200：仍然 fail-open，任何人都能读走观测数据。
     """
     url = f"{base_url}/v1/internal/metrics/weather-adjust"
+    body = ""
     try:
         with urllib.request.urlopen(url, timeout=5) as response:
             status = response.status
+            body = response.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
         status = e.code
+        try:
+            body = e.read().decode("utf-8", "replace")
+        except Exception:                              # noqa: BLE001
+            body = ""
     except Exception as e:                              # noqa: BLE001
         report("WARN", "8. 无法核验指标端点（TD-01）", f"{base_url}：{type(e).__name__}")
         return
 
-    if status in (401, 403):
-        report("OK", "8. 指标端点拒绝无令牌请求",
-               f"无令牌 → HTTP {status}。注意：这只证明“配了密钥时会拒绝”，"
-               f"密钥为空时仍会放行（TD-01 未修，修法见技术债登记）")
+    body_code = None
+    try:
+        body_code = (json.loads(body) or {}).get("code")
+    except Exception:                                  # noqa: BLE001 —— 不是 JSON 就不是
+        pass
+
+    if status == 403 and body_code == 40301:
+        report("WARN", "8. 端点已 fail-closed，但服务端没配密钥",
+               "无令牌 → 403(40301)：端点不再裸奔；但这个实例不能参与灰度，"
+               "先配 AI_INTERNAL_SECRET（见第 4 项）")
+    elif status in (401, 403):
+        report("OK", "8. 指标端点已 fail-closed（TD-01 关闭）",
+               f"无令牌 → HTTP {status}：密钥为空时那条放行路径已消除")
     elif status == 200:
         level = "FAIL" if env in ("prod", "production") else "WARN"
         report(level, "8. 指标端点仍是 fail-open（TD-01）",
