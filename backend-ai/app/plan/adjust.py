@@ -234,6 +234,18 @@ async def run_adjust(provider: LLMProvider, plan_view: dict, instruction: str,
         logger.warning("adjust rejected trace=%s count=%d first=%s", trace_id, len(problems), problems[0])
         raise AdjustError("建议内容不合法：" + problems[0])
 
+    # 数值闸门（M3-3 · S3）：**只在本次真的注入过天气时**生效。
+    # 没有天气就没有数值可抄，这时再拦一遍只是误伤合法建议；
+    # `validate_ops` 本身没有任何改动，所以"关闭时行为逐字不变"是结构保证，不是靠自觉。
+    if weather.injected:
+        leaks = weather_adjust.validate_weather_values(summary, ops)
+        if leaks:
+            logger.warning(
+                "adjust weather value rejected trace=%s count=%d first=%s",
+                trace_id, len(leaks), leaks[0],
+            )
+            raise AdjustError("建议里抄了天气数值：" + leaks[0] + "，请换一种说法重试")
+
     logger.info("adjust(real) trace=%s ops=%d", trace_id, len(ops or []))
     # 分段耗时：调整链路没有 SSE，用户等待 = 天气 + 模型，两个数都要能看到
     model_ms = _ms(started)

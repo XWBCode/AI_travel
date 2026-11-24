@@ -30,6 +30,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from dataclasses import replace
 from datetime import date, datetime
@@ -58,6 +59,24 @@ _ADJUST_USAGE_RULES = """【本次是调整，不是重排】
 
 # 配置值不合法时只告警一次，避免每个请求都刷一行
 _warned_max_cities = False
+
+# 天气数值的识别式（M3-3 · S3）。
+#
+# 刻意**不复用** `contract.NUMERIC_UNIT_PATTERN`：那个正则服务于已冻结契约的 freeText 校验，
+# 给它加 `%`/`级` 会改变生成链路已验收的行为。这里只认天气语境里会出现的单位，
+# 不认"分钟/小时/元/公里"——那些是行程本身的单位，拦它们等于顺手改了调整规则。
+#
+# 也刻意**不认中文数字**（「十几度」「三四级」）：扩到中文数字会把「一起」「十分」这类
+# 正常表达一起误伤，而调整链路上误伤的代价是"合法建议被拒，用户得重说一遍"，
+# 比漏网更糟。这条限制写在设计稿 §4.3，验收时用抽样兜底，不假装挡住了。
+WEATHER_VALUE_PATTERN = re.compile(
+    r"[0-9０-９]+\s*(?:%|％|℃|°C|°|摄氏度|度|级|毫米|mm|MM|厘米|cm|米/秒|m/s|米每秒)"
+)
+
+# 只检查这四类自由文本（PM 批复：title / note / theme / summary）。
+# 不含 city：城市名里出现数字是地名的正常形态；不含 startTime/endTime：HH:mm 本来就带数字。
+_WATCHED_FIELDS = ("title", "note", "theme")
+
 
 
 async def prepare_adjust_weather_block(
@@ -155,6 +174,62 @@ def filter_brief(
         covered_cities=covered,
         uncovered_cities=tuple(brief.uncovered_cities) + emptied,
     )
+
+
+# ---------------------------------------------------------------- 数值闸门（S3）
+
+
+def validate_weather_values(summary: Any, ops: Any) -> list[str]:
+    """注入过天气之后，检查自由文本里有没有把天气数值抄进去。返回人类可读问题列表。
+
+    ## 为什么独立成一个函数，而不是给 `validate_ops` 加开关
+
+    PM 的验收要求是"没注入时原校验器行为逐字不变"。**不动 `validate_ops` 是最强的证明**：
+    它一个字符没改，所以不存在"开关没打开但分支走错了"这种可能。调用方只在
+    `weather.injected` 为真时才调这里，闸门的存在性完全由调用点决定。
+
+    ## 为什么必须拒绝，而不是自动修
+
+    删掉违规文本等于悄悄改用户要的内容；静默放行等于让编造数字进界面；自动重试会让
+    延迟翻倍且不确定（模型可能再犯）。而"输出不合规就在本地拒绝、让用户马上重说一遍"
+    本来就是这个模块的既有处置方式（见 `adjust.py` 模块文档），这里沿用同一条路。
+
+    ## 已知限制
+
+    中文数字（「十几度」）不命中。扩正则会把「一起」「十分」这类正常中文一起误伤，
+    在调整链路上得不偿失。见设计稿 §4.3 与验收 AC-A10。
+    """
+    problems: list[str] = []
+
+    hit = _scan(summary)
+    if hit:
+        problems.append(f"summary 里出现了天气数值「{hit}」")
+
+    for position, op in enumerate(ops if isinstance(ops, list) else [], start=1):
+        if not isinstance(op, Mapping):
+            continue
+        for field in _WATCHED_FIELDS:
+            hit = _scan(op.get(field))
+            if hit:
+                problems.append(f"第 {position} 项的 {field} 里出现了天气数值「{hit}」")
+        for change in op.get("changes") or []:
+            if not isinstance(change, Mapping):
+                continue
+            field = change.get("field")
+            if field not in _WATCHED_FIELDS:
+                continue
+            hit = _scan(change.get("after"))
+            if hit:
+                problems.append(f"第 {position} 项把 {field} 改成了含天气数值「{hit}」的内容")
+    return problems
+
+
+def _scan(value: Any) -> str | None:
+    """命中就返回命中的那一段（写进错误消息，便于用户和日志定位），否则 None。"""
+    if not isinstance(value, str) or not value:
+        return None
+    match = WEATHER_VALUE_PATTERN.search(value)
+    return match.group(0).strip() if match else None
 
 
 # ---------------------------------------------------------------- 小工具
